@@ -59,6 +59,14 @@ const faqs = [
   { q: "Is the floating assistant a real AI?", a: "Dot can navigate the page and answer a curated set of portfolio questions without any API key. To enable open-ended AI replies, add an OpenRouter key to the server-side environment settings. The key is never sent to the browser." }
 ];
 
+function getVisibleViewport() {
+  const viewport = window.visualViewport;
+  return {
+    width: Math.max(1, viewport?.width ?? window.innerWidth),
+    height: Math.max(1, viewport?.height ?? window.innerHeight),
+  };
+}
+
 function scrollToId(id: string) {
   document.getElementById(id)?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block: "start" });
 }
@@ -258,6 +266,8 @@ function ToolkitStrip() {
   },[]);
 
   const onPointerDown=(event:ReactPointerEvent<HTMLButtonElement>,tag:string)=>{
+    // Preserve native touch scrolling; the throw gesture remains a desktop pointer action.
+    if(event.pointerType==="touch" || window.matchMedia("(hover: none)").matches)return;
     if(event.button!==0)return;
     event.preventDefault();
     const element=event.currentTarget;
@@ -306,7 +316,7 @@ function ToolkitStrip() {
 
   return <section className="toolkit-section" id="toolkit">
     <div className="toolkit-head section-wrap"><div><p className="eyebrow"><span>04</span> THE TOOLBOX</p><h2>Tools I <em>reach for.</em></h2></div><p>Drag and throw a tag around. These are tools and areas I've worked with or explored—not a scoreboard.</p></div>
-    <div className="toolkit-rail" ref={railRef} aria-label="Draggable technology tags">{toolkit.map((tag,i)=><button key={tag} type="button" data-tool-chip={tag} onPointerDown={event=>onPointerDown(event,tag)} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel} className={`tool-chip ${dragged===tag?"dragged":""}`} style={{"--chip-i":i} as CSSProperties}>{tag}<span>✳</span></button>)}</div>
+    <div className="toolkit-rail" ref={railRef} aria-label="Draggable technology tags">{toolkit.map((tag,i)=><button key={tag} type="button" data-tool-chip={tag} onPointerDown={event=>onPointerDown(event,tag)} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel} className={`tool-chip ${dragged===tag?"dragged":""}`} style={{"--chip-i":i} as CSSProperties} onClick={event=>{if(window.matchMedia("(hover: none)").matches)throwTool(event.currentTarget,Math.random()>.5?10:-10,-24);}}>{tag}<span>✳</span></button>)}</div>
     <div className="toolkit-bottom section-wrap"><span>DRAG / THROW THE TOOLS <ArrowRight size={12}/></span><span>18 ITEMS / NO FAKE PROFICIENCY SCORES</span></div>
   </section>;
 }
@@ -522,9 +532,9 @@ export default function PortfolioExperience({ soundOn, onToggleSound, playSound,
 
   const getDotDestination=(target:Element)=>{
     const rect=target.getBoundingClientRect();
-    const vw=window.innerWidth, vh=window.innerHeight;
-    const mobile=window.matchMedia("(max-width: 720px)").matches;
-    const size=(mobile?100:132)*dotCharacterScaleRef.current;
+    const {width:vw,height:vh}=getVisibleViewport();
+    const mobile=vw<=720;
+    const size=(mobile?92:132)*dotCharacterScaleRef.current;
     const radius=size/2+10;
     const gap=mobile?20:30;
     const canFitLeft=rect.left-radius-gap>=12;
@@ -542,17 +552,21 @@ export default function PortfolioExperience({ soundOn, onToggleSound, playSound,
   const getPopupPosition=():DotMicroPopupPosition=>{
     const mascot=dotGuideElementRef.current?.querySelector<HTMLElement>(".dot-mascot");
     const rect=(mascot??dotGuideElementRef.current)?.getBoundingClientRect();
-    if(!rect)return {x:window.innerWidth*.5,y:window.innerHeight*.25,side:"below"};
-    const width=Math.min(224,window.innerWidth-28);
-    const x=Math.max(width/2+10,Math.min(window.innerWidth-width/2-10,rect.left+rect.width/2));
-    const roomBelow=window.innerHeight-rect.bottom;
+    const {width:viewportWidth,height:viewportHeight}=getVisibleViewport();
+    if(!rect)return {x:viewportWidth*.5,y:viewportHeight*.25,side:"below"};
+    const width=Math.min(224,Math.max(120,viewportWidth-24));
+    const x=Math.max(width/2+12,Math.min(viewportWidth-width/2-12,rect.left+rect.width/2));
+    const popupHeight=Math.min(120,Math.max(76,viewportHeight*.18));
+    const roomBelow=viewportHeight-rect.bottom;
     const roomAbove=rect.top;
-    // The reference usually places its speech card beneath the character;
-    // flip only when that would push the card off-screen.
-    const side:DotMicroPopupPosition["side"] = roomBelow>=138 || roomAbove<138 ? "below" : "above";
+    const side:DotMicroPopupPosition["side"] = roomBelow>=popupHeight+16
+      ? "below"
+      : roomAbove>=popupHeight+16
+        ? "above"
+        : roomBelow>=roomAbove ? "below" : "above";
     const y=side==="below"
-      ? Math.max(14,Math.min(window.innerHeight-118,rect.bottom+13))
-      : Math.max(16,rect.top-12);
+      ? Math.max(12,Math.min(viewportHeight-popupHeight-12,rect.bottom+12))
+      : Math.max(popupHeight+12,Math.min(viewportHeight-12,rect.top-12));
     return {x,y,side};
   };
 
@@ -561,16 +575,25 @@ export default function PortfolioExperience({ soundOn, onToggleSound, playSound,
     return dotMotionRef.current?.moveTo(destination.x,destination.y,{maxDuration:7600,maxSpeed:440,stiffness:27,damping:10.5,curve:.16})??false;
   };
 
-  const waitForScrollSettle=async(generation:number)=>{
+  const waitForScrollSettle=async(generation:number,horizontalScroller?:HTMLElement|null)=>{
     let previousY=window.scrollY;
+    let previousX=window.scrollX;
+    let previousRailX=horizontalScroller?.scrollLeft??0;
     let calmSamples=0;
     let elapsed=0;
-    while(elapsed<1900){
+    while(elapsed<2200){
       const active=await waitForTour(90,generation);
       if(!active)return false;
       const currentY=window.scrollY;
-      calmSamples=Math.abs(currentY-previousY)<0.9?calmSamples+1:0;
+      const currentX=window.scrollX;
+      const currentRailX=horizontalScroller?.scrollLeft??0;
+      const settled=Math.abs(currentY-previousY)<0.9
+        &&Math.abs(currentX-previousX)<0.9
+        &&Math.abs(currentRailX-previousRailX)<0.9;
+      calmSamples=settled?calmSamples+1:0;
       previousY=currentY;
+      previousX=currentX;
+      previousRailX=currentRailX;
       elapsed+=90;
       if(calmSamples>=3)return true;
     }
@@ -757,6 +780,7 @@ export default function PortfolioExperience({ soundOn, onToggleSound, playSound,
     return true;
   };
   const finishTour=()=>{
+    const completedNaturally=tourRemainingMsRef.current<=0;
     const currentRect=dotGuideElementRef.current?.getBoundingClientRect();
     const currentPosition=currentRect?{x:currentRect.left+currentRect.width/2,y:currentRect.top+currentRect.height/2}:null;
     clearTourTimers();
@@ -773,11 +797,20 @@ export default function PortfolioExperience({ soundOn, onToggleSound, playSound,
     tourNextIndexRef.current=0;
     setTourPaused(false);setTourPrompt(false);setAssistantOpen(false);
     setSelectedProject(null);setShowGame(false);
+    // A completed automatic tour should finish at the real footer instead of
+    // leaving the viewport parked halfway through the horizontally-scrolling toolbox.
+    if(completedNaturally) {
+      document.querySelector<HTMLElement>(".footer")?.scrollIntoView({
+        behavior:window.matchMedia("(prefers-reduced-motion: reduce)").matches?"instant":"smooth",
+        block:"end",
+      });
+    }
 
-    const mobile=window.matchMedia("(max-width: 720px)").matches;
+    const {width:viewportWidth,height:viewportHeight}=getVisibleViewport();
+    const mobile=viewportWidth<=720;
     const dockSize=mobile?74:94;
-    const targetX=window.innerWidth-(mobile?12:24)-dockSize/2;
-    const targetY=window.innerHeight-(mobile?20:22)-dockSize/2;
+    const targetX=viewportWidth-(mobile?12:24)-dockSize/2;
+    const targetY=viewportHeight-(mobile?14:22)-dockSize/2;
     const start=currentPosition??{x:targetX,y:targetY};
     changeDotCharacterScale(1);
     setDotMode("docking");
@@ -792,9 +825,10 @@ export default function PortfolioExperience({ soundOn, onToggleSound, playSound,
     tourMoveTimerRef.current=window.setTimeout(()=>{
       if(generation!==tourGenerationRef.current)return;
       const moveHome=(attempt:number)=>{
-        const mobileNow=window.matchMedia("(max-width: 720px)").matches;
-        const homeX=window.innerWidth-(mobileNow?12:24)-(mobileNow?74:94)/2;
-        const homeY=window.innerHeight-(mobileNow?20:22)-(mobileNow?74:94)/2;
+        const {width:viewportWidth,height:viewportHeight}=getVisibleViewport();
+        const mobileNow=viewportWidth<=720;
+        const homeX=viewportWidth-(mobileNow?12:24)-(mobileNow?74:94)/2;
+        const homeY=viewportHeight-(mobileNow?14:22)-(mobileNow?74:94)/2;
         void (dotMotionRef.current?.moveTo(homeX,homeY,{maxDuration:attempt===0?9800:12500,maxSpeed:attempt===0?470:420,stiffness:attempt===0?25:22,damping:10.2,curve:.09})??Promise.resolve(false)).then((arrived)=>{
           if(generation!==tourGenerationRef.current)return;
           if(!arrived&&attempt<2){
@@ -877,9 +911,19 @@ export default function PortfolioExperience({ soundOn, onToggleSound, playSound,
 
     // Scroll only when the real interaction target is outside the comfortable viewport.
     const rect=target.getBoundingClientRect();
-    const needsScroll=rect.top<96||rect.bottom>window.innerHeight-112;
-    if(needsScroll)target.scrollIntoView({behavior:window.matchMedia("(prefers-reduced-motion: reduce)").matches?"instant":"smooth",block:"center",inline:"nearest"});
-    const settled=needsScroll?await waitForScrollSettle(generation):await waitForTour(320,generation);
+    const {height:viewportHeight}=getVisibleViewport();
+    const needsScroll=rect.top<96||rect.bottom>viewportHeight-112;
+    const toolkitRail=beat.action==="toolkit"?target.closest<HTMLElement>(".toolkit-rail"):null;
+    if(needsScroll || toolkitRail) {
+      target.scrollIntoView({
+        behavior:window.matchMedia("(prefers-reduced-motion: reduce)").matches?"instant":"smooth",
+        block:toolkitRail?"nearest":"center",
+        inline:toolkitRail?"center":"nearest",
+      });
+    }
+    const settled=(needsScroll || toolkitRail)
+      ?await waitForScrollSettle(generation,toolkitRail)
+      :await waitForTour(320,generation);
     if(!settled||!tourIsCurrent(generation))return;
 
     const liveTarget=target.isConnected?target:pickTarget();
@@ -959,9 +1003,10 @@ export default function PortfolioExperience({ soundOn, onToggleSound, playSound,
     tourRemainingMsRef.current=DOT_EXPLORATION_DURATION_MS;
     setTourTimeLeft(Math.ceil(DOT_EXPLORATION_DURATION_MS/1000));
     changeDotCharacterScale(1);
-    const mobile=window.matchMedia("(max-width: 720px)").matches;
+    const {width:viewportWidth,height:viewportHeight}=getVisibleViewport();
+    const mobile=viewportWidth<=720;
     const dockSize=mobile?74:94;
-    const initial={x:window.innerWidth-(mobile?12:24)-dockSize/2,y:window.innerHeight-(mobile?20:22)-dockSize/2};
+    const initial={x:viewportWidth-(mobile?12:24)-dockSize/2,y:viewportHeight-(mobile?14:22)-dockSize/2};
     setDotMode("touring");
     setDotPosition(initial);
     setDotMood("curious");
@@ -1058,7 +1103,7 @@ export default function PortfolioExperience({ soundOn, onToggleSound, playSound,
   const copyEmail=async()=>{if(!contactEmail)return;try{await navigator.clipboard.writeText(contactEmail);setEmailCopied(true);window.setTimeout(()=>setEmailCopied(false),1600);}catch{/* clipboard unavailable */}};
 
   return <main className="site-root">
-    <header className="topbar"><a className="wordmark" href="#top" aria-label="Areeb Khalid, home">areeb<span>✳</span></a><nav className={menuOpen?"main-nav open":"main-nav"} aria-label="Main navigation"><a className={activeSection==="lab"?"current":""} href="#lab" onClick={()=>setMenuOpen(false)}>Work</a><a href="#capabilities" onClick={()=>setMenuOpen(false)}>What I build</a><a href="#about" onClick={()=>setMenuOpen(false)}>About</a><a href="#faq" onClick={()=>setMenuOpen(false)}>FAQ</a><a className="nav-contact" href="#contact" onClick={()=>setMenuOpen(false)}>Say hello <ArrowUpRight size={14}/></a></nav><div className="topbar-tools"><button className="sound-control" onClick={handleToggleSound} title={soundOn?"Turn sound off":"Turn sound on for Dot and the guide"} aria-pressed={soundOn}>{soundOn?<Volume2 size={13}/>:<VolumeX size={13}/>} SOUND: {soundOn?"ON":"OFF"}</button><button id="command-trigger" className="command-trigger" aria-label="Open quick navigation" onClick={()=>{const el=document.getElementById("command-overlay");el?.classList.toggle("show");}}><Command size={14}/><span>K</span></button><button className="mobile-menu" onClick={()=>setMenuOpen(v=>!v)} aria-label="Toggle navigation">{menuOpen?<X/>:<Menu/>}</button></div></header>
+    <header className="topbar"><a className="wordmark" href="#top" aria-label="Areeb Khalid, home">areeb<span>✳</span></a><nav id="portfolio-navigation" className={menuOpen?"main-nav open":"main-nav"} aria-label="Main navigation"><a className={activeSection==="lab"?"current":""} href="#lab" onClick={()=>setMenuOpen(false)}>Work</a><a href="#capabilities" onClick={()=>setMenuOpen(false)}>What I build</a><a href="#about" onClick={()=>setMenuOpen(false)}>About</a><a href="#faq" onClick={()=>setMenuOpen(false)}>FAQ</a><a className="nav-contact" href="#contact" onClick={()=>setMenuOpen(false)}>Say hello <ArrowUpRight size={14}/></a></nav><div className="topbar-tools"><button className="sound-control" onClick={handleToggleSound} title={soundOn?"Turn sound off":"Turn sound on for Dot and the guide"} aria-pressed={soundOn}>{soundOn?<Volume2 size={13}/>:<VolumeX size={13}/>} SOUND: {soundOn?"ON":"OFF"}</button><button id="command-trigger" className="command-trigger" aria-label="Open quick navigation" onClick={()=>{const el=document.getElementById("command-overlay");el?.classList.toggle("show");}}><Command size={14}/><span>K</span></button><button className="mobile-menu" type="button" onClick={()=>setMenuOpen(v=>!v)} aria-label="Toggle navigation" aria-expanded={menuOpen} aria-controls="portfolio-navigation">{menuOpen?<X/>:<Menu/>}</button></div></header>
 
     <div className="command-overlay" id="command-overlay" onClick={e=>{if(e.target===e.currentTarget)e.currentTarget.classList.remove("show");}}><div className="command-box"><div className="command-box-head"><span><Command size={15}/> JUMP TO</span><button onClick={()=>document.getElementById("command-overlay")?.classList.remove("show")}><X size={15}/></button></div>{tourSteps.map((s,i)=><button key={s.id} onClick={()=>{scrollToId(s.id);document.getElementById("command-overlay")?.classList.remove("show");}}><span>0{i+1}</span>{s.title}<ArrowUpRight size={13}/></button>)}</div></div>
 

@@ -53,26 +53,25 @@ export default function DotGuide({
     const anchor = document.querySelector<HTMLElement>(".driver-mascot-wrap");
     const updatePlacement = () => {
       const rect = anchor?.getBoundingClientRect();
-      const mobile = window.matchMedia("(max-width: 720px)").matches;
+      const viewport = window.visualViewport;
+      const viewportWidth = Math.max(1, viewport?.width ?? window.innerWidth);
+      const viewportHeight = Math.max(1, viewport?.height ?? window.innerHeight);
+      const mobile = viewportWidth <= 720;
       const fallbackSize = mobile
-        ? Math.min(window.innerHeight * 0.43, window.innerWidth * 0.78, 340)
-        : window.innerWidth <= 900
-          ? Math.min(window.innerHeight * 0.54, 430, window.innerWidth * 0.65)
-          : Math.min(window.innerHeight * 0.58, 500, window.innerWidth * 0.68);
-      // Keep the character close to the reference's compact entry scale.
-      // It should read as a distinct creature inside the larger orbital anchor.
-      const mascotInset = mobile ? 0.64 : window.innerWidth <= 900 ? 0.58 : 0.54;
+        ? Math.min(viewportHeight * 0.34, viewportWidth * 0.78, 280)
+        : viewportWidth <= 900
+          ? Math.min(viewportHeight * 0.54, 430, viewportWidth * 0.65)
+          : Math.min(viewportHeight * 0.58, 500, viewportWidth * 0.68);
+      const mascotInset = mobile ? 0.48 : viewportWidth <= 900 ? 0.58 : 0.54;
       const anchorWidth = rect?.width || fallbackSize;
-      // The reference entry character is roughly 180px on a desktop viewport;
-      // the previous 86% anchor fill made the rebuilt Dot about 1.6x too large.
-      const size = Math.max(1, Math.min(mobile ? 168 : 196, anchorWidth * mascotInset));
-      const x = rect ? rect.left + rect.width / 2 : window.innerWidth / 2;
-      const y = rect ? rect.top + rect.height / 2 : window.innerHeight / 2 - (mobile ? 8 : 20);
+      const size = Math.max(1, Math.min(mobile ? 112 : 196, anchorWidth * mascotInset));
+      const x = rect ? rect.left + rect.width / 2 : viewportWidth / 2;
+      const y = rect ? rect.top + rect.height / 2 : viewportHeight / 2 - (mobile ? 8 : 20);
       const dockSize = mobile ? 74 : 94;
       const dockRight = mobile ? 12 : 24;
-      const dockBottom = mobile ? 20 : 22;
-      const dockX = window.innerWidth - dockRight - dockSize / 2;
-      const dockY = window.innerHeight - dockBottom - dockSize / 2;
+      const dockBottom = mobile ? 14 : 22;
+      const dockX = viewportWidth - dockRight - dockSize / 2;
+      const dockY = viewportHeight - dockBottom - dockSize / 2;
       setEntryPlacement({
         x,
         y,
@@ -89,10 +88,16 @@ export default function DotGuide({
       : null;
     if (anchor) observer?.observe(anchor);
     window.addEventListener("resize", updatePlacement, { passive: true });
+    window.addEventListener("orientationchange", updatePlacement, { passive: true });
+    window.visualViewport?.addEventListener("resize", updatePlacement, { passive: true });
+    window.visualViewport?.addEventListener("scroll", updatePlacement, { passive: true });
 
     return () => {
       observer?.disconnect();
       window.removeEventListener("resize", updatePlacement);
+      window.removeEventListener("orientationchange", updatePlacement);
+      window.visualViewport?.removeEventListener("resize", updatePlacement);
+      window.visualViewport?.removeEventListener("scroll", updatePlacement);
     };
   }, [mode]);
 

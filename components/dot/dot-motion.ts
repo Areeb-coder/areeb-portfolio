@@ -20,12 +20,19 @@ export class DotMotionController {
   private write(x: number, y: number, vx: number, vy: number) {
     const element = this.getElement();
     if (!element) return;
+    const viewport = window.visualViewport;
+    const viewportWidth = Math.max(1, viewport?.width ?? window.innerWidth);
+    const viewportHeight = Math.max(1, viewport?.height ?? window.innerHeight);
+    const rect = element.getBoundingClientRect();
+    const radius = Math.max(1, rect.width || 100) / 2;
+    const safeX = Math.max(radius + 8, Math.min(viewportWidth - radius - 8, x));
+    const safeY = Math.max(radius + 8, Math.min(viewportHeight - radius - 8, y));
     const degrees = Math.atan2(vy, vx) * (180 / Math.PI);
     const tilt = Number.isFinite(degrees) ? Math.max(-7, Math.min(7, (degrees - 90) * 0.08)) : 0;
-    element.style.setProperty("--dot-x", `${x.toFixed(2)}px`);
-    element.style.setProperty("--dot-y", `${y.toFixed(2)}px`);
+    element.style.setProperty("--dot-x", `${safeX.toFixed(2)}px`);
+    element.style.setProperty("--dot-y", `${safeY.toFixed(2)}px`);
     element.style.setProperty("--dot-tilt", `${tilt.toFixed(2)}deg`);
-    element.setAttribute("data-side", x > window.innerWidth * 0.56 ? "left" : "right");
+    element.setAttribute("data-side", safeX > viewportWidth * 0.56 ? "left" : "right");
   }
 
   setPosition(x: number, y: number) {
@@ -48,8 +55,9 @@ export class DotMotionController {
     let px = rect.left + rect.width / 2;
     let py = rect.top + rect.height / 2;
     if (!Number.isFinite(px) || !Number.isFinite(py)) {
-      px = window.innerWidth - rect.width / 2 - 24;
-      py = window.innerHeight - rect.height / 2 - 24;
+      const viewport = window.visualViewport;
+      px = (viewport?.width ?? window.innerWidth) - rect.width / 2 - 24;
+      py = (viewport?.height ?? window.innerHeight) - rect.height / 2 - 24;
     }
 
     const startX = px;

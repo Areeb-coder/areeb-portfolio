@@ -108,7 +108,7 @@ export default function DriverSelection({
           <div className="driver-copy">
             <p className="driver-eyebrow"><span /> MEET YOUR GUIDE</p>
             <h1 id="driver-title">A new perspective<br />starts with <em>curiosity.</em></h1>
-            <p id="driver-description">This is Dot. Move your cursor around and say hello before stepping inside.</p>
+            <p id="driver-description">This is Dot. Move your cursor or tap to say hello before stepping inside.</p>
           </div>
         </div>
 

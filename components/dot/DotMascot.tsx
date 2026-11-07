@@ -144,8 +144,22 @@ export default function DotMascot({
   useEffect(() => {
     const stage = stageRef.current;
     const canvas = canvasRef.current;
-    const context = canvas?.getContext("2d", { alpha: true, desynchronized: true });
-    if (!stage || !canvas || !context) return;
+    if (!stage || !canvas) return;
+    let context: CanvasRenderingContext2D | null = null;
+    try {
+      context = canvas.getContext("2d", { alpha: true, desynchronized: false });
+    } catch {
+      // Some mobile browsers reject optional context attributes.
+    }
+    if (!context) {
+      try { context = canvas.getContext("2d", { alpha: true }); }
+      catch { context = null; }
+    }
+    if (!context) {
+      stage.dataset.renderer = "unavailable";
+      return;
+    }
+    stage.dataset.renderer = "ready";
 
     const particles = createParticles(
       clamp(particleCount, 80, 420),
@@ -154,10 +168,14 @@ export default function DotMascot({
     );
     const projected: ProjectedParticle[] = particles.map(() => ({ x: 0, y: 0, depth: 0, radius: 0, alpha: 0 }));
 
-    let width = 1;
-    let height = 1;
-    let dpr = 1;
+    let width = 0;
+    let height = 0;
+    let dpr = 0;
     let bodyRadius = 1;
+    let sizeReady = false;
+    let resizeFrame = 0;
+    let initialMeasureFrame = 0;
+    let initialMeasureAttempts = 0;
     // Capture the entry-stage diameter once. When the same character docks,
     // its field is sampled down relative to this original visual scale.
     let referenceDiameter = 0;
@@ -174,24 +192,42 @@ export default function DotMascot({
 
     const resize = () => {
       const rect = stage.getBoundingClientRect();
-      const nextWidth = Math.max(1, rect.width);
-      const nextHeight = Math.max(1, rect.height);
-      if (Math.abs(nextWidth - width) < 0.5 && Math.abs(nextHeight - height) < 0.5) return;
+      const nextWidth = rect.width;
+      const nextHeight = rect.height;
+      // Fixed/portal elements can briefly measure as zero while mobile browsers
+      // resolve the visual viewport. Wait for a real box before sizing the canvas.
+      if (!Number.isFinite(nextWidth) || !Number.isFinite(nextHeight) || nextWidth < 2 || nextHeight < 2) {
+        return false;
+      }
+
+      const nextDpr = Math.min(window.devicePixelRatio || 1, 2);
+      const pixelWidth = Math.max(1, Math.round(nextWidth * nextDpr));
+      const pixelHeight = Math.max(1, Math.round(nextHeight * nextDpr));
+      const changed = !sizeReady
+        || Math.abs(nextWidth - width) >= 0.5
+        || Math.abs(nextHeight - height) >= 0.5
+        || nextDpr !== dpr
+        || canvas.width !== pixelWidth
+        || canvas.height !== pixelHeight;
+      if (!changed) return true;
+
       width = nextWidth;
       height = nextHeight;
       if (referenceDiameter <= 1) referenceDiameter = Math.min(width, height);
-      dpr = Math.min(window.devicePixelRatio || 1, 2);
-      canvas.width = Math.max(1, Math.round(width * dpr));
-      canvas.height = Math.max(1, Math.round(height * dpr));
+      dpr = nextDpr;
+      canvas.width = pixelWidth;
+      canvas.height = pixelHeight;
       canvas.style.width = `${width}px`;
       canvas.style.height = `${height}px`;
       context.setTransform(dpr, 0, 0, dpr, 0, 0);
       bodyRadius = Math.min(width, height) * 0.445;
+      sizeReady = true;
       darkSurface = adaptiveContrast ? surfaceIsDark(stage, width, height) : false;
       activeParticleColor = darkSurface ? "#dce85c" : particleColor;
       stage.dataset.contrast = darkSurface ? "dark" : "light";
       stage.style.setProperty("--dot-face-center-ink", darkSurface ? "#dce85c" : "#080808");
       draw(elapsed);
+      return true;
     };
 
     const draw = (time: number) => {
@@ -310,14 +346,15 @@ export default function DotMascot({
     const start = () => {
       stop();
       if (!inViewport || document.hidden) return;
+      if (!sizeReady && !resize()) return;
       darkSurface = adaptiveContrast ? surfaceIsDark(stage, width, height) : false;
       activeParticleColor = darkSurface ? "#dce85c" : particleColor;
       stage.dataset.contrast = darkSurface ? "dark" : "light";
       stage.style.setProperty("--dot-face-center-ink", darkSurface ? "#dce85c" : "#080808");
-      if (reducedMotion) {
-        draw(elapsed);
-        return;
-      }
+      // Paint the first usable frame immediately instead of waiting on a
+      // later animation tick after mobile layout/portal initialization.
+      draw(elapsed);
+      if (reducedMotion) return;
       running = true;
       frameId = window.requestAnimationFrame(animate);
     };
@@ -348,16 +385,33 @@ export default function DotMascot({
     const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
     const onMotionChange = (event: MediaQueryListEvent) => { reducedMotion = event.matches; start(); };
 
-    resizeObserver = typeof ResizeObserver !== "undefined" ? new ResizeObserver(resize) : null;
+    const onViewportResize = () => {
+      if (resizeFrame) window.cancelAnimationFrame(resizeFrame);
+      resizeFrame = window.requestAnimationFrame(() => {
+        resizeFrame = 0;
+        if (resize() && !running && inViewport && !document.hidden) start();
+      });
+    };
+    resizeObserver = typeof ResizeObserver !== "undefined"
+      ? new ResizeObserver(() => {
+          if (resize() && !running && inViewport && !document.hidden) start();
+        })
+      : null;
     resizeObserver?.observe(stage);
     const intersectionObserver = typeof IntersectionObserver !== "undefined"
       ? new IntersectionObserver(([entry]) => {
           inViewport = Boolean(entry?.isIntersecting);
-          if (inViewport) start(); else stop();
+          if (inViewport) {
+            if (sizeReady) start();
+            else onViewportResize();
+          } else stop();
         }, { rootMargin: "80px", threshold: 0.01 })
       : null;
     intersectionObserver?.observe(stage);
-    window.addEventListener("resize", resize, { passive: true });
+
+    window.addEventListener("resize", onViewportResize, { passive: true });
+    window.addEventListener("orientationchange", onViewportResize, { passive: true });
+    window.visualViewport?.addEventListener("resize", onViewportResize, { passive: true });
     window.addEventListener("scroll", onScroll, { passive: true });
     if (interactive) window.addEventListener("pointermove", updateGaze, { passive: true });
     window.addEventListener("pointerleave", resetGaze, { passive: true });
@@ -367,11 +421,27 @@ export default function DotMascot({
 
     resize();
     start();
+    // Retry the first measurement briefly; ResizeObserver handles later layout changes.
+    const retryInitialMeasure = () => {
+      if (sizeReady || initialMeasureAttempts >= 12) return;
+      initialMeasureAttempts += 1;
+      if (resize()) {
+        if (!running && inViewport && !document.hidden) start();
+        return;
+      }
+      initialMeasureFrame = window.requestAnimationFrame(retryInitialMeasure);
+    };
+    initialMeasureFrame = window.requestAnimationFrame(retryInitialMeasure);
+
     return () => {
       stop();
+      if (resizeFrame) window.cancelAnimationFrame(resizeFrame);
+      if (initialMeasureFrame) window.cancelAnimationFrame(initialMeasureFrame);
       resizeObserver?.disconnect();
       intersectionObserver?.disconnect();
-      window.removeEventListener("resize", resize);
+      window.removeEventListener("resize", onViewportResize);
+      window.removeEventListener("orientationchange", onViewportResize);
+      window.visualViewport?.removeEventListener("resize", onViewportResize);
       window.removeEventListener("scroll", onScroll);
       window.removeEventListener("pointermove", updateGaze);
       window.removeEventListener("pointerleave", resetGaze);
