@@ -12,7 +12,7 @@ export default function SiteEntry() {
   // Render the entry scene in the first server/client frame; no placeholder flash.
   const [showIntro, setShowIntro] = useState(true);
   const [leaving, setLeaving] = useState(false);
-  const [experienceVersion, setExperienceVersion] = useState(0);
+  const [experienceVersion, setExperienceVersion] = useState(0);\n  const [introOutcome, setIntroOutcome] = useState<"active" | "completed" | "skipped">("active");
   const { soundOn, toggleSound, playSound } = useDotAudio();
   const exitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrollFrameRef = useRef<number | null>(null);
@@ -61,7 +61,7 @@ export default function SiteEntry() {
     };
   }, [showIntro]);
 
-  const enterPortfolio = useCallback(() => {
+  const skipIntro = useCallback(() => {\n    if (leaving) return;\n    if (exitTimerRef.current) clearTimeout(exitTimerRef.current);\n    exitTimerRef.current = null;\n    window.scrollTo({ left: 0, top: 0, behavior: "instant" });\n    // Skipping is a separate state transition: reveal the portfolio immediately\n    // but explicitly keep Dot's automatic exploration disabled.\n    setIntroOutcome("skipped");\n    setLeaving(false);\n    setShowIntro(false);\n  }, [leaving]);\n\n  const enterPortfolio = useCallback(() => {
     if (leaving) return;
     window.scrollTo({ left: 0, top: 0, behavior: "instant" });
     playSound("transition");
@@ -95,7 +95,7 @@ export default function SiteEntry() {
         />
       </div>
       {showIntro && (
-        <DriverSelection onEnter={enterPortfolio} leaving={leaving} soundOn={soundOn} onToggleSound={toggleSound} />
+        <DriverSelection onEnter={enterPortfolio} onSkip={skipIntro} leaving={leaving} soundOn={soundOn} onToggleSound={toggleSound} />
       )}
     </>
   );
