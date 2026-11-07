@@ -60,10 +60,22 @@ export class DotMotionController {
       py = (viewport?.height ?? window.innerHeight) - rect.height / 2 - 24;
     }
 
+    const safeTarget = () => {
+      const viewport = window.visualViewport;
+      const viewportWidth = Math.max(1, viewport?.width ?? window.innerWidth);
+      const viewportHeight = Math.max(1, viewport?.height ?? window.innerHeight);
+      const currentRect = element.getBoundingClientRect();
+      const radius = Math.max(1, currentRect.width || rect.width || 100) / 2 + 8;
+      return {
+        x: Math.max(radius, Math.min(viewportWidth - radius, x)),
+        y: Math.max(radius, Math.min(viewportHeight - radius, y)),
+      };
+    };
+    const initialTarget = safeTarget();
     const startX = px;
     const startY = py;
-    const dx = x - px;
-    const dy = y - py;
+    const dx = initialTarget.x - px;
+    const dy = initialTarget.y - py;
     const distance = Math.hypot(dx, dy);
     if (distance < 5) {
       this.write(x, y, 0, 0);
@@ -91,7 +103,10 @@ export class DotMotionController {
         window.cancelAnimationFrame(this.frameId);
         this.frameId = 0;
         this.resolveCurrent = null;
-        if (arrived) this.write(x, y, 0, 0);
+        if (arrived) {
+          const destination = safeTarget();
+          this.write(destination.x, destination.y, 0, 0);
+        }
         resolve(arrived);
       };
 
@@ -105,8 +120,9 @@ export class DotMotionController {
         previousAt = now;
         const progress = Math.min(1, elapsed / Math.min(durationLimit * 0.88, Math.max(1000, distance / maxSpeed * 1000 + 900)));
         const curve = Math.sin(progress * Math.PI) * curveSize;
-        const targetX = x + perpendicularX * curve;
-        const targetY = y + perpendicularY * curve;
+        const destination = safeTarget();
+        const targetX = destination.x + perpendicularX * curve;
+        const targetY = destination.y + perpendicularY * curve;
 
         let ax = (targetX - px) * stiffness - vx * damping;
         let ay = (targetY - py) * stiffness - vy * damping;
@@ -127,7 +143,7 @@ export class DotMotionController {
         py += vy * dt;
         this.write(px, py, vx, vy);
 
-        const remaining = Math.hypot(x - px, y - py);
+        const remaining = Math.hypot(destination.x - px, destination.y - py);
         if (remaining < 2.6 && Math.hypot(vx, vy) < 10) settledFrames += 1;
         else settledFrames = 0;
 

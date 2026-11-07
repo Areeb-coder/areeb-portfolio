@@ -570,6 +570,20 @@ export default function PortfolioExperience({ soundOn, onToggleSound, playSound,
     return {x,y,side};
   };
 
+  useEffect(()=>{
+    const repositionPopup=()=>{
+      setTourPopup(current=>current?{...current,position:getPopupPosition()}:current);
+    };
+    window.addEventListener("resize",repositionPopup,{passive:true});
+    window.addEventListener("orientationchange",repositionPopup,{passive:true});
+    window.visualViewport?.addEventListener("resize",repositionPopup,{passive:true});
+    return ()=>{
+      window.removeEventListener("resize",repositionPopup);
+      window.removeEventListener("orientationchange",repositionPopup);
+      window.visualViewport?.removeEventListener("resize",repositionPopup);
+    };
+  },[]);
+
   const moveDotNear=async(target:Element)=>{
     const destination=getDotDestination(target);
     return dotMotionRef.current?.moveTo(destination.x,destination.y,{maxDuration:7600,maxSpeed:440,stiffness:27,damping:10.5,curve:.16})??false;

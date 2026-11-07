@@ -1,0 +1,50 @@
+name: Mobile portfolio validation and source bundle
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-portfolio-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-and-package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Production build
+        run: npm run build
+
+      - name: Create clean source archive
+        if: always()
+        run: |
+          zip -r areeb-portfolio-mobile-source.zip . \
+            -x ".git/*" ".next/*" "node_modules/*" "coverage/*" ".vercel/*" \
+               "areeb-portfolio-mobile-source.zip"
+
+      - name: Upload source archive
+        if: always() && hashFiles('areeb-portfolio-mobile-source.zip') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: areeb-portfolio-mobile-source-${{ github.sha }}
+          path: areeb-portfolio-mobile-source.zip
+          retention-days: 30
