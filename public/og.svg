@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <rect width="1200" height="630" fill="#f5f36a"/>
+  <g opacity=".18" stroke="#151710"><path d="M0 90H1200M0 180H1200M0 270H1200M0 360H1200M0 450H1200M0 540H1200"/><path d="M100 0V630M200 0V630M300 0V630M400 0V630M500 0V630M600 0V630M700 0V630M800 0V630M900 0V630M1000 0V630M1100 0V630"/></g>
+  <text x="68" y="84" fill="#151710" font-family="Arial,sans-serif" font-size="27" font-weight="700" letter-spacing="-2">areeb✳</text>
+  <text x="68" y="157" fill="#151710" font-family="monospace" font-size="15" letter-spacing="2">SOFTWARE ENGINEERING / AI / CREATIVE TECHNOLOGY</text>
+  <text x="57" y="333" fill="#151710" font-family="Arial,sans-serif" font-size="144" font-weight="800" letter-spacing="-10">I BUILD</text>
+  <text x="57" y="485" fill="#151710" font-family="Arial,sans-serif" font-size="144" font-weight="800" letter-spacing="-10">THINGS THAT THINK.</text>
+  <circle cx="1030" cy="235" r="95" fill="none" stroke="#151710" stroke-width="2"/><circle cx="1030" cy="235" r="68" fill="none" stroke="#151710" stroke-dasharray="5 9"/><text x="1030" y="260" text-anchor="middle" fill="#151710" font-family="Arial,sans-serif" font-size="65" font-weight="700">AK</text>
+  <text x="70" y="584" fill="#151710" font-family="monospace" font-size="14" letter-spacing="2">AI × SYSTEMS × DESIGN  /  AREEB-KHALID</text>
+</svg>

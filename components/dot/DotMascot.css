@@ -1,0 +1,87 @@
+.dot-mascot {
+  position: relative;
+  display: block;
+  width: min(100%, var(--dot-size, 480px));
+  aspect-ratio: 1 / 1;
+  margin: 0;
+  overflow: visible;
+  isolation: isolate;
+  background: var(--dot-background, transparent);
+  touch-action: pan-y;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.dot-mascot canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  height: 100%;
+  outline: none;
+  pointer-events: none;
+}
+
+/* The face is intentionally HTML, not part of the particle bitmap. */
+.dot-face {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  pointer-events: none;
+}
+
+.dot-face-eye {
+  position: absolute;
+  top: 32.2%;
+  display: grid;
+  place-items: center;
+  width: 21%;
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;
+  background: #fffefb;
+  box-shadow: 0 0 0 0.5px rgba(8, 8, 8, 0.06);
+}
+
+.dot-face-eye-left { left: 21.2%; }
+.dot-face-eye-right { right: 21.2%; }
+
+.dot-face-eye i {
+  display: block;
+  width: 43%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: #080808;
+  transform: translate(var(--dot-gaze-x, 0px), var(--dot-gaze-y, 0px));
+  transition: transform 180ms cubic-bezier(.2,.75,.25,1);
+}
+
+.dot-face-mouth {
+  position: absolute;
+  left: 50%;
+  /* The reference's central dark feature sits just below the eye line,
+     not low on the face like a conventional mouth. */
+  top: 47.5%;
+  width: 14%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--dot-face-center-ink, #080808);
+  transform: translateX(-50%);
+  transition: background-color 260ms ease;
+}
+
+.dot-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dot-mascot canvas { animation: none; }
+  .dot-face-eye i { transition: none; }
+}
