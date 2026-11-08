@@ -61,8 +61,8 @@ function resolveCue(cue: DotSoundCue): AssetCue {
 
 /**
  * A single audio engine is owned by SiteEntry and survives the portfolio's
- * entry/exit and ordinary React state changes. Audio is opt-in: the browser
- * context and sources are created only from the visible sound control's click.
+ * entry/exit and ordinary React state changes. Audio is unlocked only from
+ * a real user gesture (the intro controls or the visible sound toggle).
  */
 export function useDotAudio() {
   const [soundOn, setSoundOn] = useState(false);
