@@ -2,6 +2,8 @@ name: Validate and package portfolio
 
 on:
   push:
+    branches: [main, dot/audio-pack-integration]
+  pull_request:
     branches: [main]
   workflow_dispatch:
 
@@ -29,6 +31,12 @@ jobs:
 
       - name: Build production bundle
         run: npm run build
+
+      - name: Verify supplied Dot audio pack assets
+        run: |
+          for asset in dot-ambient-loop.mp3 sfx-dot-hover.mp3 sfx-dot-move.mp3 sfx-dot-playful.mp3 sfx-dot-discovery.mp3 sfx-dot-transition.mp3 sfx-dot-land.mp3 sfx-ui-soft-click.mp3; do
+            test -s "public/audio/$asset" || { echo "::error file=public/audio/$asset::Missing required Dot audio asset"; exit 1; }
+          done
 
       - name: Package complete source
         run: |
