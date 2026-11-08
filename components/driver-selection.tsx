@@ -1,14 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
-import { ArrowRight, ArrowUpRight, Volume2, VolumeX } from "lucide-react";
+import { ArrowRight, ArrowUpRight } from "lucide-react";
 
 type DriverSelectionProps = {
   onEnter: () => void;
   onSkip: () => void;
   leaving: boolean;
-  soundOn: boolean;
-  onToggleSound: () => void;
 };
 
 /** Entry screen shown on every new document visit. Dot remains the same in-site character after entering. */
@@ -16,11 +14,8 @@ export default function DriverSelection({
   onEnter,
   onSkip,
   leaving,
-  soundOn,
-  onToggleSound,
 }: DriverSelectionProps) {
   const skipRef = useRef<HTMLButtonElement>(null);
-  const soundRef = useRef<HTMLButtonElement>(null);
   const enterRef = useRef<HTMLButtonElement>(null);
   const mascotWrapRef = useRef<HTMLDivElement>(null);
   const [portalOrigin, setPortalOrigin] = useState<{ x: number; y: number } | null>(null);
@@ -48,16 +43,16 @@ export default function DriverSelection({
 
     if (event.key !== "Tab") return;
 
-    // Keep keyboard focus inside the modal, including the sound control.
-    if (event.shiftKey && document.activeElement === soundRef.current) {
+    // Keep keyboard focus inside the intro between Skip and Enter.
+    if (event.shiftKey && document.activeElement === enterRef.current) {
       event.preventDefault();
-      enterRef.current?.focus();
+      skipRef.current?.focus();
     } else if (event.shiftKey && document.activeElement === skipRef.current) {
       event.preventDefault();
-      soundRef.current?.focus();
+      enterRef.current?.focus();
     } else if (!event.shiftKey && document.activeElement === enterRef.current) {
       event.preventDefault();
-      soundRef.current?.focus();
+      skipRef.current?.focus();
     }
   };
 
@@ -77,9 +72,6 @@ export default function DriverSelection({
         </div>
         <p className="driver-topline">INDEPENDENT DIGITAL EXPERIENCE <i /> 2026</p>
         <div className="driver-top-actions">
-        <button ref={soundRef} className={`driver-sound${soundOn ? " is-on" : ""}`} type="button" onClick={onToggleSound} aria-pressed={soundOn} title={soundOn ? "Turn sound off" : "Enable subtle Dot sounds"}>
-          {soundOn ? <Volume2 size={13} /> : <VolumeX size={13} />} SOUND {soundOn ? "ON" : "OFF"}
-        </button>
         <button
           ref={skipRef}
           className="driver-skip"
