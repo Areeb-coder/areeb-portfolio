@@ -2,314 +2,310 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-export type DotSoundCue = "enabled" | "transition" | "appear" | "move" | "land" | "section" | "interaction" | "text" | "scatter";
+export type DotSoundCue =
+  | "enabled"
+  | "transition"
+  | "appear"
+  | "move"
+  | "land"
+  | "section"
+  | "interaction"
+  | "text"
+  | "scatter"
+  | "hover"
+  | "playful"
+  | "discovery";
 
-type Note = {
-  frequency: number;
-  endFrequency?: number;
-  delay: number;
-  duration: number;
-  gain: number;
-  type?: OscillatorType;
+type AssetCue = "hover" | "move" | "playful" | "discovery" | "transition" | "land" | "click";
+
+const ASSET_PATHS: Record<AssetCue | "ambient", string> = {
+  ambient: "/audio/dot-ambient-loop.mp3",
+  hover: "/audio/sfx-dot-hover.mp3",
+  move: "/audio/sfx-dot-move.mp3",
+  playful: "/audio/sfx-dot-playful.mp3",
+  discovery: "/audio/sfx-dot-discovery.mp3",
+  transition: "/audio/sfx-dot-transition.mp3",
+  land: "/audio/sfx-dot-land.mp3",
+  click: "/audio/sfx-ui-soft-click.mp3",
 };
 
-// Short, tactile UI sounds. Dot uses sound design rather than synthetic speech:
-// no robot voice is played when a natural voice is not available.
-const CUES: Record<DotSoundCue, Note[]> = {
-  enabled: [
-    { frequency: 523.25, delay: 0, duration: 0.2, gain: 0.145 },
-    { frequency: 783.99, delay: 0.08, duration: 0.3, gain: 0.12 },
-  ],
-  transition: [
-    { frequency: 220, endFrequency: 330, delay: 0, duration: 0.38, gain: 0.17, type: "triangle" },
-    { frequency: 440, endFrequency: 659.25, delay: 0.1, duration: 0.42, gain: 0.14 },
-  ],
-  appear: [
-    { frequency: 196, endFrequency: 294, delay: 0, duration: 0.42, gain: 0.17, type: "triangle" },
-    { frequency: 392, endFrequency: 587.33, delay: 0.11, duration: 0.48, gain: 0.145 },
-    { frequency: 784, delay: 0.22, duration: 0.24, gain: 0.11 },
-  ],
-  move: [
-    { frequency: 180, endFrequency: 270, delay: 0, duration: 0.32, gain: 0.105, type: "sine" },
-    { frequency: 360, endFrequency: 440, delay: 0.07, duration: 0.24, gain: 0.075, type: "triangle" },
-  ],
-  land: [
-    { frequency: 392, delay: 0, duration: 0.18, gain: 0.17, type: "triangle" },
-    { frequency: 587.33, delay: 0.065, duration: 0.27, gain: 0.145 },
-  ],
-  section: [
-    { frequency: 440, delay: 0, duration: 0.16, gain: 0.14 },
-    { frequency: 554.37, delay: 0.06, duration: 0.2, gain: 0.12 },
-  ],
-  interaction: [
-    { frequency: 587.33, delay: 0, duration: 0.13, gain: 0.17, type: "triangle" },
-    { frequency: 739.99, delay: 0.045, duration: 0.18, gain: 0.125 },
-  ],
-  text: [
-    { frequency: 330, endFrequency: 392, delay: 0, duration: 0.23, gain: 0.13, type: "sine" },
-    { frequency: 659.25, delay: 0.055, duration: 0.19, gain: 0.1 },
-  ],
-  scatter: [
-    { frequency: 240, endFrequency: 185, delay: 0, duration: 0.19, gain: 0.16, type: "triangle" },
-    { frequency: 330, endFrequency: 250, delay: 0.055, duration: 0.18, gain: 0.13, type: "triangle" },
-    { frequency: 415, endFrequency: 290, delay: 0.11, duration: 0.17, gain: 0.12, type: "sine" },
-    { frequency: 520, endFrequency: 360, delay: 0.17, duration: 0.16, gain: 0.1, type: "triangle" },
-    { frequency: 285, endFrequency: 210, delay: 0.23, duration: 0.2, gain: 0.105, type: "sine" },
-  ],
+const COOLDOWNS: Record<AssetCue, number> = {
+  hover: 500,
+  move: 450,
+  playful: 650,
+  discovery: 700,
+  transition: 600,
+  land: 450,
+  click: 180,
 };
 
+const AMBIENT_GAIN = 0.16;
+const EFFECTS_GAIN = 0.45;
+
+function resolveCue(cue: DotSoundCue): AssetCue {
+  switch (cue) {
+    case "hover": return "hover";
+    case "move": return "move";
+    case "playful":
+    case "scatter": return "playful";
+    case "discovery":
+    case "appear":
+    case "text": return "discovery";
+    case "transition":
+    case "section": return "transition";
+    case "land": return "land";
+    case "enabled":
+    case "interaction": return "click";
+  }
+}
+
+/**
+ * A single audio engine is owned by SiteEntry and survives the portfolio's
+ * entry/exit and ordinary React state changes. Audio is opt-in: the browser
+ * context and sources are created only from the visible sound control's click.
+ */
 export function useDotAudio() {
   const [soundOn, setSoundOn] = useState(false);
   const soundOnRef = useRef(false);
+  const unlockedRef = useRef(false);
   const contextRef = useRef<AudioContext | null>(null);
-  const lastCueAtRef = useRef<Partial<Record<DotSoundCue, number>>>({});
   const ambientSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const ambientGainRef = useRef<GainNode | null>(null);
-  const ambientTimerRef = useRef<number | null>(null);
-  const ambientStartedRef = useRef(false);
-  const ambientUnlockHandlerRef = useRef<(() => void) | null>(null);
-
-  const setAmbientAudible = useCallback((audible: boolean) => {
-    const context = contextRef.current;
-    const master = ambientGainRef.current;
-    if (!context || !master || context.state === "closed") return;
-    const now = context.currentTime;
-    master.gain.cancelScheduledValues(now);
-    master.gain.setValueAtTime(Math.max(0.0001, master.gain.value), now);
-    master.gain.setTargetAtTime(audible ? 0.19 : 0.0001, now, audible ? 0.48 : 0.075);
-  }, []);
+  const effectsBusRef = useRef<GainNode | null>(null);
+  const buffersRef = useRef<Partial<Record<AssetCue | "ambient", AudioBuffer>>>({});
+  const loadingRef = useRef<Promise<void> | null>(null);
+  const activeSourcesRef = useRef<Partial<Record<AssetCue, AudioBufferSourceNode>>>({});
+  const lastCueAtRef = useRef<Partial<Record<AssetCue, number>>>({});
+  const duckTimerRef = useRef<number | null>(null);
 
   const getContext = useCallback((): AudioContext | null => {
     if (typeof window === "undefined") return null;
     if (contextRef.current && contextRef.current.state !== "closed") return contextRef.current;
-    const Constructor = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!Constructor) return null;
+
+    const AudioContextConstructor = window.AudioContext
+      || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextConstructor) return null;
+
     try {
-      contextRef.current = new Constructor();
-      return contextRef.current;
+      const context = new AudioContextConstructor();
+      const ambientGain = context.createGain();
+      const effectsBus = context.createGain();
+      ambientGain.gain.value = 0.0001;
+      effectsBus.gain.value = 0.0001;
+      ambientGain.connect(context.destination);
+      effectsBus.connect(context.destination);
+
+      contextRef.current = context;
+      ambientGainRef.current = ambientGain;
+      effectsBusRef.current = effectsBus;
+      return context;
     } catch {
       return null;
     }
   }, []);
 
-  const scheduleCue = useCallback((context: AudioContext, cue: DotSoundCue) => {
+  const loadAssets = useCallback(async (context: AudioContext) => {
+    if (loadingRef.current) return loadingRef.current;
+
+    loadingRef.current = (async () => {
+      const entries = Object.entries(ASSET_PATHS) as Array<[AssetCue | "ambient", string]>;
+      await Promise.all(entries.map(async ([name, path]) => {
+        if (buffersRef.current[name]) return;
+        try {
+          const response = await fetch(path, { cache: "force-cache" });
+          if (!response.ok) return;
+          const bytes = await response.arrayBuffer();
+          const decoded = await context.decodeAudioData(bytes);
+          buffersRef.current[name] = decoded;
+        } catch {
+          // An unavailable or unsupported sound must never break the portfolio.
+        }
+      }));
+    })().finally(() => {
+      loadingRef.current = null;
+    });
+
+    return loadingRef.current;
+  }, []);
+
+  const setGain = useCallback((node: GainNode | null, value: number, seconds: number) => {
+    const context = contextRef.current;
+    if (!context || !node || context.state === "closed") return;
     const now = context.currentTime;
-    const pitchVariation = cue === "interaction" || cue === "section" || cue === "text"
-      ? [0.982, 1, 1.014][Math.floor(Math.random() * 3)]
-      : 1;
-    const levelVariation = 0.94 + Math.random() * 0.08;
-
-    for (const note of CUES[cue]) {
-      const oscillator = context.createOscillator();
-      const envelope = context.createGain();
-      const filter = context.createBiquadFilter();
-      const startAt = now + note.delay;
-      const endAt = startAt + note.duration;
-      const level = Math.min(0.24, note.gain * levelVariation);
-
-      oscillator.type = note.type ?? "sine";
-      oscillator.frequency.setValueAtTime(note.frequency * pitchVariation, startAt);
-      if (note.endFrequency) {
-        oscillator.frequency.exponentialRampToValueAtTime(note.endFrequency * pitchVariation, endAt);
-      }
-      filter.type = "lowpass";
-      filter.frequency.setValueAtTime(cue === "move" ? 1050 : 2200, startAt);
-      filter.Q.setValueAtTime(0.45, startAt);
-      envelope.gain.setValueAtTime(0.0001, startAt);
-      envelope.gain.exponentialRampToValueAtTime(level, startAt + 0.028);
-      envelope.gain.exponentialRampToValueAtTime(0.0001, endAt);
-
-      oscillator.connect(filter);
-      filter.connect(envelope);
-      envelope.connect(context.destination);
-      oscillator.start(startAt);
-      oscillator.stop(endAt + 0.025);
-      oscillator.onended = () => {
-        oscillator.disconnect();
-        filter.disconnect();
-        envelope.disconnect();
-      };
-    }
+    node.gain.cancelScheduledValues(now);
+    node.gain.setValueAtTime(Math.max(0.0001, node.gain.value), now);
+    node.gain.linearRampToValueAtTime(Math.max(0.0001, value), now + seconds);
   }, []);
 
-  const playSound = useCallback((cue: DotSoundCue) => {
-    if (!soundOnRef.current) return;
-    const timestamp = typeof performance !== "undefined" ? performance.now() : Date.now();
-    const previous = lastCueAtRef.current[cue] ?? -Infinity;
-    const cooldown = cue === "section" ? 520 : cue === "move" ? 360 : 120;
-    if (timestamp - previous < cooldown) return;
-    lastCueAtRef.current[cue] = timestamp;
-
-    const context = getContext();
-    if (!context) return;
-    if (context.state === "suspended") {
-      void context.resume().then(() => {
-        if (soundOnRef.current && context.state === "running") scheduleCue(context, cue);
-      }).catch(() => undefined);
-      return;
-    }
-    if (context.state === "running") scheduleCue(context, cue);
-  }, [getContext, scheduleCue]);
-
-  const clearAmbientUnlock = useCallback(() => {
-    const handler = ambientUnlockHandlerRef.current;
-    if (!handler || typeof window === "undefined") return;
-    window.removeEventListener("pointerdown", handler, true);
-    window.removeEventListener("touchstart", handler, true);
-    window.removeEventListener("keydown", handler, true);
-    ambientUnlockHandlerRef.current = null;
-  }, []);
-
-  const stopAmbient = useCallback(() => {
-    clearAmbientUnlock();
-    if (ambientTimerRef.current !== null) {
-      window.clearInterval(ambientTimerRef.current);
-      ambientTimerRef.current = null;
-    }
-    const source = ambientSourceRef.current;
-    ambientSourceRef.current = null;
-    if (source) {
-      try { source.stop(); } catch {}
-      try { source.disconnect(); } catch {}
-    }
+  const startAmbient = useCallback(() => {
+    const context = contextRef.current;
+    const buffer = buffersRef.current.ambient;
     const gain = ambientGainRef.current;
-    ambientGainRef.current = null;
-    if (gain) {
-      try { gain.disconnect(); } catch {}
-    }
-    ambientStartedRef.current = false;
-  }, [clearAmbientUnlock]);
+    if (!context || !buffer || !gain || ambientSourceRef.current || !soundOnRef.current) return;
 
-  const startAudio = useCallback(() => {
-    soundOnRef.current = true;
-    setSoundOn(true);
-    const context = getContext();
-    if (!context) return;
-
-    const startAmbient = () => {
-      if (!soundOnRef.current || context.state !== "running") return;
-      if (ambientStartedRef.current) {
-        // Re-enabling sound restores the same source at its current playhead.
-        setAmbientAudible(true);
-        return;
-      }
-
-      // One continuous, low-level sound bed: soft filtered air, a warm harmonic
-      // centre and occasional rounded plucks. The uploaded audio is a quiet mono
-      // screen-capture mix rather than a cleanly isolated ambient asset, so the
-      // page does not embed the entire recording as its background soundtrack.
-      const master = context.createGain();
-      master.gain.setValueAtTime(0.0001, context.currentTime);
-      master.connect(context.destination);
-
-      const buffer = context.createBuffer(1, Math.floor(context.sampleRate * 12), context.sampleRate);
-      const data = buffer.getChannelData(0);
-      let seed = 918273;
-      for (let i = 0; i < data.length; i += 1) {
-        seed = (seed * 16807) % 2147483647;
-        const noise = ((seed / 2147483647) * 2 - 1) * 0.0105;
-        const time = i / context.sampleRate;
-        const slowBreath = Math.sin(2 * Math.PI * 0.0833 * time) * 0.0032;
-        const warmBed = Math.sin(2 * Math.PI * 130.81 * time) * 0.0021
-          + Math.sin(2 * Math.PI * 164.81 * time) * 0.00135
-          + Math.sin(2 * Math.PI * 196 * time) * 0.00105;
-        data[i] = noise + slowBreath + warmBed;
-      }
-
+    try {
       const source = context.createBufferSource();
       source.buffer = buffer;
       source.loop = true;
-      const filter = context.createBiquadFilter();
-      filter.type = "lowpass";
-      filter.frequency.setValueAtTime(1320, context.currentTime);
-      filter.Q.setValueAtTime(0.2, context.currentTime);
-      source.connect(filter);
-      filter.connect(master);
-      source.start();
-
+      source.connect(gain);
+      source.start(0);
       ambientSourceRef.current = source;
-      ambientGainRef.current = master;
-      ambientStartedRef.current = true;
-      setAmbientAudible(true);
+      setGain(gain, AMBIENT_GAIN, 3);
+    } catch {
+      // Keep the visual experience working if Web Audio refuses source creation.
+    }
+  }, [setGain]);
 
-      let step = 0;
-      const spark = () => {
-        if (!soundOnRef.current || context.state !== "running") return;
-        const now = context.currentTime;
-        const frequencies = [392, 523.25, 659.25, 493.88, 587.33, 440];
-        const oscillator = context.createOscillator();
-        const envelope = context.createGain();
-        const softFilter = context.createBiquadFilter();
-        const startAt = now + 0.01;
-        const endAt = startAt + 0.42;
+  const enableAudio = useCallback(async () => {
+    const context = getContext();
+    if (!context) return;
 
-        oscillator.type = "sine";
-        oscillator.frequency.setValueAtTime(frequencies[step % frequencies.length], startAt);
-        softFilter.type = "lowpass";
-        softFilter.frequency.setValueAtTime(1650, startAt);
-        envelope.gain.setValueAtTime(0.0001, startAt);
-        envelope.gain.exponentialRampToValueAtTime(0.021, startAt + 0.065);
-        envelope.gain.exponentialRampToValueAtTime(0.0001, endAt);
-        oscillator.connect(softFilter);
-        softFilter.connect(envelope);
-        envelope.connect(master);
-        oscillator.start(startAt);
-        oscillator.stop(endAt + 0.02);
-        oscillator.onended = () => {
-          oscillator.disconnect();
-          softFilter.disconnect();
-          envelope.disconnect();
+    // resume() is called synchronously from the user-initiated toggle handler.
+    try {
+      if (context.state !== "running") await context.resume();
+    } catch {
+      return;
+    }
+    if (context.state !== "running" || !soundOnRef.current) return;
+
+    unlockedRef.current = true;
+    await loadAssets(context);
+    if (context.state !== "running" || !soundOnRef.current) return;
+
+    const effectsBus = effectsBusRef.current;
+    if (effectsBus) setGain(effectsBus, EFFECTS_GAIN, 0.12);
+    startAmbient();
+  }, [getContext, loadAssets, setGain, startAmbient]);
+
+  const playSound = useCallback((cue: DotSoundCue) => {
+    if (!soundOnRef.current || !unlockedRef.current || document.visibilityState === "hidden") return;
+
+    const context = contextRef.current;
+    if (!context) return;
+    const assetCue = resolveCue(cue);
+    const nowMs = typeof performance !== "undefined" ? performance.now() : Date.now();
+    const previous = lastCueAtRef.current[assetCue] ?? -Infinity;
+    if (nowMs - previous < COOLDOWNS[assetCue]) return;
+    if (activeSourcesRef.current[assetCue]) return;
+
+    const play = () => {
+      if (!soundOnRef.current || context.state !== "running") return;
+      const buffer = buffersRef.current[assetCue];
+      const bus = effectsBusRef.current;
+      if (!buffer || !bus) return;
+
+      try {
+        const source = context.createBufferSource();
+        source.buffer = buffer;
+        source.connect(bus);
+        activeSourcesRef.current[assetCue] = source;
+        source.onended = () => {
+          if (activeSourcesRef.current[assetCue] === source) delete activeSourcesRef.current[assetCue];
+          try { source.disconnect(); } catch { /* already disconnected */ }
         };
-        step += 1;
-      };
+        source.start(0);
+        lastCueAtRef.current[assetCue] = nowMs;
 
-      spark();
-      ambientTimerRef.current = window.setInterval(spark, 2050);
-    };
-
-    const deferUntilNextGesture = () => {
-      if (ambientUnlockHandlerRef.current || !soundOnRef.current) return;
-      const onUnlock = () => {
-        clearAmbientUnlock();
-        if (!soundOnRef.current) return;
-        void context.resume().then(startAmbient).catch(() => undefined);
-      };
-      ambientUnlockHandlerRef.current = onUnlock;
-      window.addEventListener("pointerdown", onUnlock, { once: true, capture: true, passive: true });
-      window.addEventListener("touchstart", onUnlock, { once: true, capture: true, passive: true });
-      window.addEventListener("keydown", onUnlock, { once: true, capture: true });
+        // A subtle ambient dip keeps the cue legible without changing the mix.
+        const ambientGain = ambientGainRef.current;
+        if (ambientGain) {
+          setGain(ambientGain, 0.135, 0.035);
+          if (duckTimerRef.current !== null) window.clearTimeout(duckTimerRef.current);
+          duckTimerRef.current = window.setTimeout(() => {
+            duckTimerRef.current = null;
+            if (soundOnRef.current) setGain(ambientGain, AMBIENT_GAIN, 0.32);
+          }, Math.min(900, Math.max(220, buffer.duration * 1000)));
+        }
+      } catch {
+        delete activeSourcesRef.current[assetCue];
+      }
     };
 
     if (context.state === "suspended") {
-      // Enter/Skip is the primary unlock gesture. If a browser blocks it,
-      // attach one passive fallback listener instead of retrying in a loop.
-      void context.resume().then(startAmbient).catch(deferUntilNextGesture);
-    } else if (context.state === "running") {
-      startAmbient();
+      void context.resume().then(play).catch(() => undefined);
     } else {
-      deferUntilNextGesture();
+      play();
     }
-  }, [clearAmbientUnlock, getContext, setAmbientAudible]);
+  }, [setGain]);
+
   const toggleSound = useCallback(() => {
-    if (!soundOnRef.current) {
-      startAudio();
-      const context=getContext();
-      if(context) void context.resume().then(()=>{ if(soundOnRef.current && context.state==="running") scheduleCue(context,"enabled"); }).catch(()=>undefined);
-      return;
+    const next = !soundOnRef.current;
+    soundOnRef.current = next;
+    setSoundOn(next);
+
+    try {
+      if (next) sessionStorage.removeItem("dot-audio-muted");
+      else sessionStorage.setItem("dot-audio-muted", "true");
+    } catch {
+      // Storage may be blocked; audio remains usable for this page session.
     }
-    soundOnRef.current=false;
-    setSoundOn(false);
-    // Mute in place: do not stop/recreate the loop or reset its playhead.
-    setAmbientAudible(false);
-  }, [getContext, scheduleCue, startAudio, setAmbientAudible]);
+
+    if (next) {
+      // The toggle itself is a genuine user gesture and therefore the unlock.
+      unlockedRef.current = true;
+      void enableAudio();
+    } else {
+      if (duckTimerRef.current !== null) {
+        window.clearTimeout(duckTimerRef.current);
+        duckTimerRef.current = null;
+      }
+      setGain(ambientGainRef.current, 0.0001, 0.08);
+      setGain(effectsBusRef.current, 0.0001, 0.05);
+      Object.values(activeSourcesRef.current).forEach(source => {
+        if (!source) return;
+        try { source.stop(); } catch { /* already stopped */ }
+        try { source.disconnect(); } catch { /* already disconnected */ }
+      });
+      activeSourcesRef.current = {};
+    }
+  }, [enableAudio, setGain]);
+
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem("dot-audio-muted") === "true") {
+        soundOnRef.current = false;
+        setSoundOn(false);
+      }
+    } catch {
+      // Private browsing/storage restrictions must not affect the site.
+    }
+
+    const handleVisibility = () => {
+      const context = contextRef.current;
+      if (!context || context.state === "closed") return;
+      if (document.visibilityState === "hidden") {
+        void context.suspend().catch(() => undefined);
+      } else if (soundOnRef.current && unlockedRef.current) {
+        void context.resume().then(() => {
+          if (soundOnRef.current && context.state === "running") {
+            const bus = effectsBusRef.current;
+            if (bus) setGain(bus, EFFECTS_GAIN, 0.12);
+            startAmbient();
+            if (ambientGainRef.current) setGain(ambientGainRef.current, AMBIENT_GAIN, 0.5);
+          }
+        }).catch(() => undefined);
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, [setGain, startAmbient]);
 
   useEffect(() => () => {
-    stopAmbient();
-    soundOnRef.current = false;
+    if (duckTimerRef.current !== null) window.clearTimeout(duckTimerRef.current);
+    Object.values(activeSourcesRef.current).forEach(source => {
+      try { source?.stop(); } catch { /* already stopped */ }
+      try { source?.disconnect(); } catch { /* already disconnected */ }
+    });
+    const ambient = ambientSourceRef.current;
+    if (ambient) {
+      try { ambient.stop(); } catch { /* already stopped */ }
+      try { ambient.disconnect(); } catch { /* already disconnected */ }
+    }
     const context = contextRef.current;
     contextRef.current = null;
     if (context && context.state !== "closed") void context.close().catch(() => undefined);
-  }, [stopAmbient]);
+  }, []);
 
-  return { soundOn, toggleSound, playSound, startAudio };
+  return { soundOn, toggleSound, playSound };
 }
