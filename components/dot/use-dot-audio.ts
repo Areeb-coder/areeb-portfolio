@@ -141,7 +141,14 @@ export function useDotAudio() {
     const context = contextRef.current;
     const buffer = buffersRef.current.ambient;
     const gain = ambientGainRef.current;
-    if (!context || !buffer || !gain || ambientSourceRef.current || !soundOnRef.current) return;
+    if (!context || !buffer || !gain || !soundOnRef.current) return;
+
+    // Reuse the same source/playhead when sound is re-enabled or a suspended
+    // context resumes; only its gain needs restoring.
+    if (ambientSourceRef.current) {
+      setGain(gain, AMBIENT_GAIN, 3);
+      return;
+    }
 
     try {
       // Crossfade the last 180ms into the first 180ms in-place. The loop
