@@ -5,6 +5,7 @@ import { ArrowRight, ArrowUpRight, Volume2, VolumeX } from "lucide-react";
 
 type DriverSelectionProps = {
   onEnter: () => void;
+  onSkip: () => void;
   leaving: boolean;
   soundOn: boolean;
   onToggleSound: () => void;
@@ -13,6 +14,7 @@ type DriverSelectionProps = {
 /** Entry screen shown on every new document visit. Dot remains the same in-site character after entering. */
 export default function DriverSelection({
   onEnter,
+  onSkip,
   leaving,
   soundOn,
   onToggleSound,
@@ -40,7 +42,7 @@ export default function DriverSelection({
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === "Escape") {
       event.preventDefault();
-      beginEnter();
+      onSkip();
       return;
     }
 
@@ -82,7 +84,7 @@ export default function DriverSelection({
           ref={skipRef}
           className="driver-skip"
           type="button"
-          onClick={beginEnter}
+          onClick={onSkip}
         >
           SKIP INTRO <ArrowUpRight size={14} strokeWidth={1.8} />
         </button>
