@@ -49,8 +49,8 @@ function resolveCue(cue: DotSoundCue): AssetCue {
     case "playful":
     case "scatter": return "playful";
     case "discovery":
-    case "appear":
     case "text": return "discovery";
+    case "appear":
     case "transition":
     case "section": return "transition";
     case "land": return "land";
@@ -228,6 +228,21 @@ export function useDotAudio() {
     }
   }, [setGain]);
 
+  const startAudio = useCallback(() => {
+    let muted = false;
+    try {
+      muted = sessionStorage.getItem("dot-audio-muted") === "true";
+    } catch {
+      // Storage restrictions must not block a user-initiated sound session.
+    }
+    if (muted) return;
+
+    soundOnRef.current = true;
+    setSoundOn(true);
+    unlockedRef.current = true;
+    void enableAudio();
+  }, [enableAudio]);
+
   const toggleSound = useCallback(() => {
     const next = !soundOnRef.current;
     soundOnRef.current = next;
@@ -307,5 +322,5 @@ export function useDotAudio() {
     if (context && context.state !== "closed") void context.close().catch(() => undefined);
   }, []);
 
-  return { soundOn, toggleSound, playSound };
+  return { soundOn, toggleSound, playSound, startAudio };
 }
