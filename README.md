@@ -1,6 +1,6 @@
 # Areeb Khalid — Portfolio Studio
 
-A personal portfolio built with Next.js, React, TypeScript and a small canvas-rendered particle character named **Dot**. It adapts the high-level interaction patterns visible on [Cloudstudio](https://cloudstudio.es/) to Areeb's own portfolio content; it does not reuse Cloudstudio's branding, code or assets.
+A personal portfolio built with Next.js, React, TypeScript and a small canvas-rendered particle character named **Dot**.
 
 ## Dot experience
 
