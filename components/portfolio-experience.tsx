@@ -748,8 +748,21 @@ export default function PortfolioExperience({ soundOn, onToggleSound, playSound,
         {transform:"rotate(-5deg) scale(.985)"},
         {transform:"rotate(0deg) scale(1)"},
       ],{duration:1180,easing:"cubic-bezier(.2,.8,.2,1)"});
+      const chessNote=section.querySelector<HTMLElement>(".about-right > p:nth-of-type(3)");
+      animateTourElement(chessNote,[
+        {transform:"translateX(0)"},
+        {transform:"translateX(5px)"},
+        {transform:"translateX(-3px)"},
+        {transform:"translateX(0)"},
+      ],{duration:1050,delay:110,easing:"cubic-bezier(.2,.8,.2,1)"});
+      const facts=Array.from(section.querySelectorAll<HTMLElement>(".about-facts > div"));
+      facts.forEach((fact,index)=>animateTourElement(fact,[
+        {transform:"translateY(0)"},
+        {transform:"translateY(-5px)"},
+        {transform:"translateY(0)"},
+      ],{duration:680,delay:190+index*115,easing:"cubic-bezier(.2,.8,.2,1)"}));
       playSound("interaction");
-      return waitForTour(1120,generation);
+      return waitForTour(1250,generation);
     }
 
     if(beat.action==="faq"){
@@ -1108,6 +1121,31 @@ export default function PortfolioExperience({ soundOn, onToggleSound, playSound,
     };
   },[touring,tourPaused]);
 
+  useEffect(()=>{
+    const media=window.matchMedia("(max-width: 767px)");
+    const viewport=window.visualViewport;
+    const root=document.documentElement;
+    if(!media.matches)return;
+    const updateViewportGap=()=>{
+      const layoutHeight=root.clientHeight||window.innerHeight;
+      const visualBottom=(viewport?.offsetTop??0)+(viewport?.height??window.innerHeight);
+      const gap=Math.max(0,Math.round(layoutHeight-visualBottom));
+      root.style.setProperty("--mobile-visual-viewport-gap",`${gap}px`);
+    };
+    updateViewportGap();
+    window.addEventListener("resize",updateViewportGap,{passive:true});
+    window.addEventListener("orientationchange",updateViewportGap,{passive:true});
+    viewport?.addEventListener("resize",updateViewportGap,{passive:true});
+    viewport?.addEventListener("scroll",updateViewportGap,{passive:true});
+    return ()=>{
+      window.removeEventListener("resize",updateViewportGap);
+      window.removeEventListener("orientationchange",updateViewportGap);
+      viewport?.removeEventListener("resize",updateViewportGap);
+      viewport?.removeEventListener("scroll",updateViewportGap);
+      root.style.removeProperty("--mobile-visual-viewport-gap");
+    };
+  },[]);
+
   useEffect(()=>()=>clearTourTimers(),[]);
 
   const handleToggleSound=()=>{
@@ -1177,7 +1215,7 @@ export default function PortfolioExperience({ soundOn, onToggleSound, playSound,
     <footer className="footer"><a href="#top" className="footer-mark">a<span>✳</span></a><span>BUILT WITH INTENT · © 2026 AREEB KHALID</span><a href="#top">BACK TO TOP ↑</a></footer>
 
     <DotPortal>
-      <div className="edge-tools"><button onClick={()=>setShowGame(true)}><span>✳</span> PLAY A MOVE</button><button onClick={handleToggleSound}>{soundOn?<Volume2 size={12}/>:<VolumeX size={12}/>} SOUND: {soundOn?"ON":"OFF"}</button></div>
+      <div className={`edge-tools${showDotGuide ? "" : " is-entry"}`}><button onClick={()=>setShowGame(true)}><span>✳</span> PLAY A MOVE</button><button onClick={handleToggleSound}>{soundOn?<Volume2 size={12}/>:<VolumeX size={12}/>} SOUND: {soundOn?"ON":"OFF"}</button></div>
       <DotGuide
         visible
         mode={showDotGuide ? dotMode : "entry"}
