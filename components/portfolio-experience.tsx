@@ -345,6 +345,8 @@ type PortfolioExperienceProps = {
   playSound: (cue: DotSoundCue) => void;
   showDotGuide: boolean;
   entryLeaving: boolean;
+  /** Only an explicit Enter Portfolio transition may start the automatic Dot tour. */
+  autoTourEnabled: boolean;
 };
 
 export default function PortfolioExperience({ soundOn, onToggleSound, playSound, showDotGuide, entryLeaving, autoTourEnabled }: PortfolioExperienceProps) {
