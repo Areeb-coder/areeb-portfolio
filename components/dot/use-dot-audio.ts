@@ -69,6 +69,16 @@ export function useDotAudio() {
   const ambientStartedRef = useRef(false);
   const ambientUnlockHandlerRef = useRef<(() => void) | null>(null);
 
+  const setAmbientAudible = useCallback((audible: boolean) => {
+    const context = contextRef.current;
+    const master = ambientGainRef.current;
+    if (!context || !master || context.state === "closed") return;
+    const now = context.currentTime;
+    master.gain.cancelScheduledValues(now);
+    master.gain.setValueAtTime(Math.max(0.0001, master.gain.value), now);
+    master.gain.setTargetAtTime(audible ? 0.19 : 0.0001, now, audible ? 0.48 : 0.075);
+  }, []);
+
   const getContext = useCallback((): AudioContext | null => {
     if (typeof window === "undefined") return null;
     if (contextRef.current && contextRef.current.state !== "closed") return contextRef.current;
@@ -177,27 +187,33 @@ export function useDotAudio() {
     if (!context) return;
 
     const startAmbient = () => {
-      if (!soundOnRef.current || ambientStartedRef.current || context.state !== "running") return;
+      if (!soundOnRef.current || context.state !== "running") return;
+      if (ambientStartedRef.current) {
+        // Re-enabling sound restores the same source at its current playhead.
+        setAmbientAudible(true);
+        return;
+      }
 
-      // One persistent low-level ambience bed plus occasional soft plucked notes.
-      // The master gain is deliberately audible at phone-speaker volume without
-      // competing with the portfolio copy or Dot's interaction cues.
+      // One continuous, low-level sound bed: soft filtered air, a warm harmonic
+      // centre and occasional rounded plucks. The uploaded audio is a quiet mono
+      // screen-capture mix rather than a cleanly isolated ambient asset, so the
+      // page does not embed the entire recording as its background soundtrack.
       const master = context.createGain();
       master.gain.setValueAtTime(0.0001, context.currentTime);
-      master.gain.exponentialRampToValueAtTime(0.26, context.currentTime + 1.4);
       master.connect(context.destination);
 
-      const buffer = context.createBuffer(1, Math.floor(context.sampleRate * 8), context.sampleRate);
+      const buffer = context.createBuffer(1, Math.floor(context.sampleRate * 12), context.sampleRate);
       const data = buffer.getChannelData(0);
       let seed = 918273;
       for (let i = 0; i < data.length; i += 1) {
         seed = (seed * 16807) % 2147483647;
-        const noise = ((seed / 2147483647) * 2 - 1) * 0.014;
+        const noise = ((seed / 2147483647) * 2 - 1) * 0.0105;
         const time = i / context.sampleRate;
-        const warmBed = Math.sin(2 * Math.PI * 0.125 * time) * 0.004
-          + Math.sin(2 * Math.PI * 130.81 * time) * 0.0022
-          + Math.sin(2 * Math.PI * 196 * time) * 0.0011;
-        data[i] = noise + warmBed;
+        const slowBreath = Math.sin(2 * Math.PI * 0.0833 * time) * 0.0032;
+        const warmBed = Math.sin(2 * Math.PI * 130.81 * time) * 0.0021
+          + Math.sin(2 * Math.PI * 164.81 * time) * 0.00135
+          + Math.sin(2 * Math.PI * 196 * time) * 0.00105;
+        data[i] = noise + slowBreath + warmBed;
       }
 
       const source = context.createBufferSource();
@@ -205,14 +221,16 @@ export function useDotAudio() {
       source.loop = true;
       const filter = context.createBiquadFilter();
       filter.type = "lowpass";
-      filter.frequency.setValueAtTime(1450, context.currentTime);
-      filter.Q.setValueAtTime(0.18, context.currentTime);
+      filter.frequency.setValueAtTime(1320, context.currentTime);
+      filter.Q.setValueAtTime(0.2, context.currentTime);
       source.connect(filter);
       filter.connect(master);
       source.start();
+
       ambientSourceRef.current = source;
       ambientGainRef.current = master;
       ambientStartedRef.current = true;
+      setAmbientAudible(true);
 
       let step = 0;
       const spark = () => {
@@ -223,14 +241,14 @@ export function useDotAudio() {
         const envelope = context.createGain();
         const softFilter = context.createBiquadFilter();
         const startAt = now + 0.01;
-        const endAt = startAt + 0.36;
+        const endAt = startAt + 0.42;
 
         oscillator.type = "sine";
         oscillator.frequency.setValueAtTime(frequencies[step % frequencies.length], startAt);
         softFilter.type = "lowpass";
-        softFilter.frequency.setValueAtTime(1800, startAt);
+        softFilter.frequency.setValueAtTime(1650, startAt);
         envelope.gain.setValueAtTime(0.0001, startAt);
-        envelope.gain.exponentialRampToValueAtTime(0.025, startAt + 0.05);
+        envelope.gain.exponentialRampToValueAtTime(0.021, startAt + 0.065);
         envelope.gain.exponentialRampToValueAtTime(0.0001, endAt);
         oscillator.connect(softFilter);
         softFilter.connect(envelope);
@@ -246,7 +264,7 @@ export function useDotAudio() {
       };
 
       spark();
-      ambientTimerRef.current = window.setInterval(spark, 1850);
+      ambientTimerRef.current = window.setInterval(spark, 2050);
     };
 
     const deferUntilNextGesture = () => {
@@ -254,11 +272,7 @@ export function useDotAudio() {
       const onUnlock = () => {
         clearAmbientUnlock();
         if (!soundOnRef.current) return;
-        if (context.state === "suspended") {
-          void context.resume().then(startAmbient).catch(() => undefined);
-        } else {
-          startAmbient();
-        }
+        void context.resume().then(startAmbient).catch(() => undefined);
       };
       ambientUnlockHandlerRef.current = onUnlock;
       window.addEventListener("pointerdown", onUnlock, { once: true, capture: true, passive: true });
@@ -267,14 +281,15 @@ export function useDotAudio() {
     };
 
     if (context.state === "suspended") {
-      // The Enter/Skip tap normally unlocks this immediately. If a browser
-      // rejects it, wait for one later gesture rather than retrying on a loop.
+      // Enter/Skip is the primary unlock gesture. If a browser blocks it,
+      // attach one passive fallback listener instead of retrying in a loop.
       void context.resume().then(startAmbient).catch(deferUntilNextGesture);
     } else if (context.state === "running") {
       startAmbient();
+    } else {
+      deferUntilNextGesture();
     }
-  }, [clearAmbientUnlock, getContext]);
-
+  }, [clearAmbientUnlock, getContext, setAmbientAudible]);
   const toggleSound = useCallback(() => {
     if (!soundOnRef.current) {
       startAudio();
@@ -282,8 +297,11 @@ export function useDotAudio() {
       if(context) void context.resume().then(()=>{ if(soundOnRef.current && context.state==="running") scheduleCue(context,"enabled"); }).catch(()=>undefined);
       return;
     }
-    soundOnRef.current=false; setSoundOn(false); stopAmbient();
-  }, [getContext, scheduleCue, startAudio, stopAmbient]);
+    soundOnRef.current=false;
+    setSoundOn(false);
+    // Mute in place: do not stop/recreate the loop or reset its playhead.
+    setAmbientAudible(false);
+  }, [getContext, scheduleCue, startAudio, setAmbientAudible]);
 
   useEffect(() => () => {
     stopAmbient();

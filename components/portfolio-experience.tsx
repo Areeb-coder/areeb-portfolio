@@ -20,13 +20,14 @@ const DOT_EXPLORATION_DURATION_MS = 115_000;
 type DotTourBeat = {
   id: string;
   selector: string;
-  action: "headline"|"capability"|"crew"|"project"|"process"|"toolkit"|"about"|"achievements"|"faq"|"contact";
+  action: "scan"|"headline"|"capability"|"crew"|"project"|"process"|"toolkit"|"about"|"achievements"|"faq"|"contact";
   comments: string[];
   pause: number;
 };
 
 const DOT_TOUR_BEATS: DotTourBeat[] = [
-  { id:"top", selector:".ticker", action:"headline", pause:1750, comments:["A moving headline. I have an idea."] },
+  { id:"top", selector:".hero h1", action:"scan", pause:1350, comments:["A bold claim. Let's check the details."] },
+  { id:"ticker", selector:".ticker", action:"headline", pause:1100, comments:["That headline moves. I can move faster."] },
   { id:"capabilities", selector:".cap-tab", action:"capability", pause:1650, comments:["Three routes. I like options."] },
   { id:"crew", selector:".crew-card", action:"crew", pause:1850, comments:["A whole team. No meetings."] },
   { id:"process", selector:".process-card", action:"process", pause:1750, comments:["A small pause for the method behind the work."] },
@@ -489,10 +490,10 @@ export default function PortfolioExperience({ soundOn, onToggleSound, playSound,
     const runningAnimations=[...tourAnimationsRef.current];
     tourAnimationsRef.current=[];
     runningAnimations.forEach(animation=>animation.cancel());
-    document.querySelectorAll<HTMLElement>(".dot-tour-touched,.dot-tour-tool-bounce,.dot-ticker-disturbed,.dot-crew-chain,.dot-process-chain,.dot-faq-burst,.dot-faq-list-scattered,.dot-project-fan").forEach(node=>{
-      node.classList.remove("dot-tour-touched","dot-tour-tool-bounce","dot-ticker-disturbed","dot-crew-chain","dot-process-chain","dot-faq-burst","dot-faq-list-scattered","dot-project-fan");
+    document.querySelectorAll<HTMLElement>(".dot-tour-touched,.dot-tour-tool-bounce,.dot-ticker-disturbed,.dot-crew-chain,.dot-process-chain,.dot-faq-burst,.dot-faq-list-scattered,.dot-project-fan,.dot-scan-target").forEach(node=>{
+      node.classList.remove("dot-tour-touched","dot-tour-tool-bounce","dot-ticker-disturbed","dot-crew-chain","dot-process-chain","dot-faq-burst","dot-faq-list-scattered","dot-project-fan","dot-scan-target");
     });
-    document.querySelectorAll<HTMLElement>(".ticker-track").forEach(node=>{node.style.animationDuration="";node.style.animationDirection="";});
+    document.querySelectorAll<HTMLElement>(".ticker-track").forEach(node=>{node.style.animationDuration="";node.style.animationDirection="";node.style.animationTimingFunction="";});
     tourTimerRef.current=null; tourMoveTimerRef.current=null; tourActionTimerRef.current=null; tourScrollFrameRef.current=null;
   };
 
@@ -625,6 +626,25 @@ export default function PortfolioExperience({ soundOn, onToggleSound, playSound,
       scheduleTourTransient(()=>element.classList.remove("dot-tour-touched"),1900);
     };
 
+    if(beat.action==="scan"){
+      const heading=interactionTarget instanceof HTMLElement?interactionTarget:section.querySelector<HTMLElement>(".hero h1");
+      if(!heading)return waitForTour(500,generation);
+      heading.classList.add("dot-scan-target");
+      playSound("text");
+      const inspected=await waitForTour(1120,generation);
+      if(!inspected||!tourIsCurrent(generation)){
+        heading.classList.remove("dot-scan-target");
+        return false;
+      }
+      // The result lands after the visual sweep, as a response from Dot rather
+      // than a generic loading label.
+      setTourPopup({message:"NO LIES FOUND",position:getPopupPosition(),tone:"light"});
+      playSound("interaction");
+      const reacted=await waitForTour(1250,generation);
+      heading.classList.remove("dot-scan-target");
+      return reacted&&tourIsCurrent(generation);
+    }
+
     if(beat.action==="headline"){
       const ticker=document.querySelector<HTMLElement>(".ticker");
       const tickerTrack=ticker?.querySelector<HTMLElement>(".ticker-track");
@@ -634,10 +654,10 @@ export default function PortfolioExperience({ soundOn, onToggleSound, playSound,
         // authored 38s loop is restored as soon as the interaction resolves.
         playSound("text");
         ticker.classList.add("dot-ticker-disturbed");
-        tickerTrack.style.animationDuration="4.8s";
+        tickerTrack.style.animationDuration="3.6s";
         tickerTrack.style.animationDirection="reverse";
         tickerTrack.style.animationTimingFunction="linear";
-        const active=await waitForTour(2650,generation);
+        const active=await waitForTour(1900,generation);
         tickerTrack.style.animationDuration="";
         tickerTrack.style.animationDirection="";
         tickerTrack.style.animationTimingFunction="";
@@ -911,7 +931,7 @@ export default function PortfolioExperience({ soundOn, onToggleSound, playSound,
     // only once it reaches the interaction and settles.
     changeDotCharacterScale(1);
     const moodByAction:Record<DotTourBeat["action"],typeof dotMood>={
-      headline:"playful",capability:"curious",crew:"curious",project:"curious",process:"thinking",toolkit:"playful",about:"idle",achievements:"playful",faq:"thinking",contact:"curious",
+      scan:"thinking",headline:"playful",capability:"curious",crew:"curious",project:"curious",process:"thinking",toolkit:"playful",about:"idle",achievements:"playful",faq:"thinking",contact:"curious",
     };
     setDotMood("thinking");
     playSound("move");
@@ -1019,7 +1039,7 @@ export default function PortfolioExperience({ soundOn, onToggleSound, playSound,
     setAssistantOpen(false);setTourPrompt(false);setTourPaused(false);setTouring(true);
     tourActiveRef.current=true;
     tourPausedRef.current=false;
-    const curatedIds=["top","capabilities","crew","process","lab","toolkit","achievements","about","faq","contact"];
+    const curatedIds=["top","ticker","capabilities","crew","process","lab","toolkit","achievements","about","faq","contact"];
     const curatedRoute=curatedIds.map(id=>DOT_TOUR_BEATS.find(beat=>beat.id===id)).filter(Boolean) as DotTourBeat[];
     const activeIndex=Math.max(0,curatedRoute.findIndex(beat=>beat.id===activeSection));
     // A curated route with one deliberate return keeps the exploration playful
@@ -1171,7 +1191,7 @@ export default function PortfolioExperience({ soundOn, onToggleSound, playSound,
       <div className="hero-bottom"><span>SCROLL TO EXPLORE <ArrowDown size={13}/></span><span>01 — 07 <i>✳</i> PERSONAL PORTFOLIO / 2026</span></div>
     </section>
 
-    <div className="ticker" aria-label="Areas of interest"><div className="ticker-track">{Array.from({length:2}).map((_,i)=><span key={i}>ARTIFICIAL INTELLIGENCE <b>✳</b> AUTONOMOUS AGENTS <b>✳</b> FULL-STACK ENGINEERING <b>✳</b> ALGORITHMS & CHESS <b>✳</b> CREATIVE DEVELOPMENT <b>✳</b> DATA SCIENCE <b>✳</b></span>)}</div></div>
+    <div className="ticker" id="ticker" aria-label="Areas of interest"><div className="ticker-track">{Array.from({length:2}).map((_,i)=><span key={i}>ARTIFICIAL INTELLIGENCE <b>✳</b> AUTONOMOUS AGENTS <b>✳</b> FULL-STACK ENGINEERING <b>✳</b> ALGORITHMS & CHESS <b>✳</b> CREATIVE DEVELOPMENT <b>✳</b> DATA SCIENCE <b>✳</b></span>)}</div></div>
 
     <CapabilityBlock/>
 
