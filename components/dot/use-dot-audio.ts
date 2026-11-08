@@ -63,6 +63,10 @@ export function useDotAudio() {
   const soundOnRef = useRef(false);
   const contextRef = useRef<AudioContext | null>(null);
   const lastCueAtRef = useRef<Partial<Record<DotSoundCue, number>>>({});
+  const ambientSourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const ambientGainRef = useRef<GainNode | null>(null);
+  const ambientTimerRef = useRef<number | null>(null);
+  const ambientStartedRef = useRef(false);
 
   const getContext = useCallback((): AudioContext | null => {
     if (typeof window === "undefined") return null;
@@ -136,27 +140,74 @@ export function useDotAudio() {
     if (context.state === "running") scheduleCue(context, cue);
   }, [getContext, scheduleCue]);
 
-  const toggleSound = useCallback(() => {
-    const next = !soundOnRef.current;
-    soundOnRef.current = next;
-    setSoundOn(next);
-    if (next) {
-      const context = getContext();
-      if (context) {
-        // The click itself unlocks the audio context under browser autoplay rules.
-        void context.resume().then(() => {
-          if (soundOnRef.current && context.state === "running") scheduleCue(context, "enabled");
-        }).catch(() => undefined);
+  const stopAmbient = useCallback(() => {
+    if (ambientTimerRef.current !== null) { window.clearInterval(ambientTimerRef.current); ambientTimerRef.current = null; }
+    const source = ambientSourceRef.current; ambientSourceRef.current = null;
+    if (source) { try { source.stop(); } catch {} try { source.disconnect(); } catch {} }
+    const gain = ambientGainRef.current; ambientGainRef.current = null;
+    if (gain) { try { gain.disconnect(); } catch {} }
+    ambientStartedRef.current = false;
+  }, []);
+
+  const startAudio = useCallback(() => {
+    soundOnRef.current = true; setSoundOn(true);
+    const context = getContext(); if (!context) return;
+    const startAmbient = () => {
+      if (!soundOnRef.current || ambientStartedRef.current || context.state !== "running") return;
+      const master = context.createGain();
+      master.gain.setValueAtTime(0.0001, context.currentTime);
+      master.gain.exponentialRampToValueAtTime(0.045, context.currentTime + 1.2);
+      master.connect(context.destination);
+      const buffer = context.createBuffer(1, Math.floor(context.sampleRate * 8), context.sampleRate);
+      const data = buffer.getChannelData(0); let seed = 918273;
+      for (let i=0;i<data.length;i+=1) {
+        seed=(seed*16807)%2147483647;
+        const noise=((seed/2147483647)*2-1)*0.018;
+        const t=i/context.sampleRate;
+        data[i]=noise+Math.sin(2*Math.PI*0.125*t)*0.004;
       }
+      const source=context.createBufferSource(); source.buffer=buffer; source.loop=true;
+      const filter=context.createBiquadFilter(); filter.type="lowpass"; filter.frequency.setValueAtTime(1450,context.currentTime); filter.Q.setValueAtTime(0.18,context.currentTime);
+      source.connect(filter); filter.connect(master); source.start();
+      ambientSourceRef.current=source; ambientGainRef.current=master; ambientStartedRef.current=true;
+      let step=0;
+      const spark=()=>{
+        if(!soundOnRef.current||context.state!=="running") return;
+        const now=context.currentTime;
+        const frequencies=[392,523.25,659.25,493.88,587.33];
+        const osc=context.createOscillator(), env=context.createGain(), sf=context.createBiquadFilter();
+        const startAt=now+0.01, endAt=startAt+0.34;
+        osc.type="sine"; osc.frequency.setValueAtTime(frequencies[step%frequencies.length],startAt);
+        sf.type="lowpass"; sf.frequency.setValueAtTime(1800,startAt);
+        env.gain.setValueAtTime(0.0001,startAt);
+        env.gain.exponentialRampToValueAtTime(0.018,startAt+0.045);
+        env.gain.exponentialRampToValueAtTime(0.0001,endAt);
+        osc.connect(sf); sf.connect(env); env.connect(master);
+        osc.start(startAt); osc.stop(endAt+0.02); step+=1;
+      };
+      spark(); ambientTimerRef.current=window.setInterval(spark,1850);
+    };
+    if(context.state==="suspended") void context.resume().then(startAmbient).catch(()=>undefined);
+    else if(context.state==="running") startAmbient();
+  }, [getContext]);
+
+  const toggleSound = useCallback(() => {
+    if (!soundOnRef.current) {
+      startAudio();
+      const context=getContext();
+      if(context) void context.resume().then(()=>{ if(soundOnRef.current && context.state==="running") scheduleCue(context,"enabled"); }).catch(()=>undefined);
+      return;
     }
-  }, [getContext, scheduleCue]);
+    soundOnRef.current=false; setSoundOn(false); stopAmbient();
+  }, [getContext, scheduleCue, startAudio, stopAmbient]);
 
   useEffect(() => () => {
+    stopAmbient();
     soundOnRef.current = false;
     const context = contextRef.current;
     contextRef.current = null;
     if (context && context.state !== "closed") void context.close().catch(() => undefined);
-  }, []);
+  }, [stopAmbient]);
 
-  return { soundOn, toggleSound, playSound };
+  return { soundOn, toggleSound, playSound, startAudio };
 }
