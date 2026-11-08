@@ -217,7 +217,7 @@ function AssistantWidget({
   return <>
     {welcome && !open && !touring && <div className="dot-welcome" role="status"><span className="welcome-spark">✳</span><div><b>Need a guide?</b><small>Dot can show you around.</small></div><button onClick={toggleOpen}>ASK DOT <ArrowUpRight size={12}/></button><button className="welcome-close" onClick={dismissWelcome} aria-label="Dismiss welcome"><X size={13}/></button></div>}
     {open && <section className="dot-panel" aria-label="Dot portfolio assistant">
-      <header className="dot-panel-head"><span className="dot-panel-status-mark" aria-hidden="true"/><div className="dot-head-copy"><b>Dot <span>· SITE GUIDE</span></b><small><i/> {busy?"Thinking through it":mood==="thinking"?"Considering it":"Here, if you need me"}</small></div><button className={`sound-toggle ${soundOn?"on":""}`} onClick={onToggleSound} title={soundOn?"Turn interaction sounds off":"Turn interaction sounds on"}>{soundOn?<Volume2 size={15}/>:<VolumeX size={15}/>}</button><button className="dot-panel-close" onClick={()=>onOpenChange(false)} aria-label="Close Dot assistant"><X size={17}/></button></header>
+      <header className="dot-panel-head"><span className="dot-panel-status-mark" aria-hidden="true"/><div className="dot-head-copy"><b>Dot <span>· SITE GUIDE</span></b><small><i/> {busy?"Thinking through it":mood==="thinking"?"Considering it":"Here, if you need me"}</small></div><button className={`sound-toggle ${soundOn?"on":""}`} onClick={onToggleSound} type="button" aria-label={soundOn?"Mute Dot audio":"Unmute Dot audio"} aria-pressed={soundOn} title={soundOn?"Mute audio":"Unmute audio"}>{soundOn?<Volume2 size={15}/>:<VolumeX size={15}/>}</button><button className="dot-panel-close" onClick={()=>onOpenChange(false)} aria-label="Close Dot assistant"><X size={17}/></button></header>
       <div className="dot-panel-intro"><span>YOUR INTERACTIVE COMPANION</span><h3>A little context.<br/><em>A better first look.</em></h3><p>Ask about the work, or let Dot wander through the site.</p><button onClick={()=>{updateMood("idle");onOpenChange(false);dismissWelcome();onStartTour();}}><Play size={12} fill="currentColor"/> LET DOT EXPLORE <ArrowRight size={13}/></button></div>
       <div className="dot-messages" aria-live="polite">{messages.slice(-5).map((m,i)=><div className={`dot-message ${m.role}`} key={`${i}-${m.content.slice(0,16)}`}><span>{m.role==="assistant"?"DOT":"YOU"}</span><p>{m.content}</p></div>)}{busy&&<div className="dot-thinking"><i/><i/><i/> Dot is thinking</div>}</div>
       <div className="dot-suggestions"><button onClick={()=>void send("Which projects should I explore first?")}>Best projects <ArrowUpRight size={11}/></button><button onClick={()=>void send("Tell me about Areeb's background")}>About Areeb <ArrowUpRight size={11}/></button><button onClick={()=>void send("What technologies does he work with?")}>Tech stack <ArrowUpRight size={11}/></button></div>
@@ -417,6 +417,21 @@ export default function PortfolioExperience({ soundOn, onToggleSound, playSound,
     nodes.forEach(n=>observer.observe(n));
     return ()=>observer.disconnect();
   },[]);
+
+  // Keep hover audio tied to the single persistent Dot control, not all page UI.
+  useEffect(()=>{
+    const onDotHover=(event:PointerEvent)=>{
+      if(event.pointerType==="touch")return;
+      const target=event.target;
+      if(!(target instanceof Element))return;
+      const orb=target.closest(".dot-guide-orb");
+      if(!orb)return;
+      if(event.relatedTarget instanceof Node && orb.contains(event.relatedTarget))return;
+      playSound("hover");
+    };
+    document.addEventListener("pointerover",onDotHover,{passive:true});
+    return ()=>document.removeEventListener("pointerover",onDotHover);
+  },[playSound]);
 
   // Section changes inform the tour's next starting point without decorating
   // the page with an artificial marker.
@@ -630,7 +645,6 @@ export default function PortfolioExperience({ soundOn, onToggleSound, playSound,
       const heading=interactionTarget instanceof HTMLElement?interactionTarget:section.querySelector<HTMLElement>(".hero h1");
       if(!heading)return waitForTour(500,generation);
       heading.classList.add("dot-scan-target");
-      playSound("text");
       const inspected=await waitForTour(1120,generation);
       if(!inspected||!tourIsCurrent(generation)){
         heading.classList.remove("dot-scan-target");
@@ -639,7 +653,7 @@ export default function PortfolioExperience({ soundOn, onToggleSound, playSound,
       // The result lands after the visual sweep, as a response from Dot rather
       // than a generic loading label.
       setTourPopup({message:"NO LIES FOUND",position:getPopupPosition(),tone:"light"});
-      playSound("interaction");
+      playSound("discovery");
       const reacted=await waitForTour(1250,generation);
       heading.classList.remove("dot-scan-target");
       return reacted&&tourIsCurrent(generation);
@@ -652,7 +666,7 @@ export default function PortfolioExperience({ soundOn, onToggleSound, playSound,
         touched(ticker);
         // Dot catches the real marquee and gives it a burst of speed. The
         // authored 38s loop is restored as soon as the interaction resolves.
-        playSound("text");
+        playSound("playful");
         ticker.classList.add("dot-ticker-disturbed");
         tickerTrack.style.animationDuration="3.6s";
         tickerTrack.style.animationDirection="reverse";
@@ -688,7 +702,7 @@ export default function PortfolioExperience({ soundOn, onToggleSound, playSound,
         ],{duration:980,delay:index*85,easing:"cubic-bezier(.2,.82,.2,1)"});
         if(animation)animation.onfinish=()=>{tourAnimationsRef.current=tourAnimationsRef.current.filter(value=>value!==animation);};
       });
-      playSound("interaction");
+      playSound("playful");
       const ripple=await waitForTour(650,generation);
       if(!ripple||!tourIsCurrent(generation))return false;
       if(chosen){setTourPopup(null);touched(chosen);chosen.click();playSound("land");}
@@ -708,7 +722,7 @@ export default function PortfolioExperience({ soundOn, onToggleSound, playSound,
           {transform:"translateY(0) rotate(0deg)"},
         ],{duration:820,delay:i*75,easing:"cubic-bezier(.2,.82,.2,1)"});
       });
-      playSound("interaction");
+      playSound("playful");
       const fanned=await waitForTour(480,generation);
       if(!fanned||!tourIsCurrent(generation))return false;
       if(chosen){setTourPopup(null);touched(chosen);chosen.click();playSound("land");}
@@ -728,7 +742,7 @@ export default function PortfolioExperience({ soundOn, onToggleSound, playSound,
           {transform:"translateY(0) scale(1)"},
         ],{duration:760,delay:index*190,easing:"cubic-bezier(.16,.84,.24,1)"});
       });
-      playSound("interaction");
+      playSound("playful");
       return waitForTour(1480,generation);
     }
 
@@ -739,7 +753,7 @@ export default function PortfolioExperience({ soundOn, onToggleSound, playSound,
         // Reuse the pointer-throw engine that the visitor uses on this exact tag.
         chip.dispatchEvent(new CustomEvent("dot:throw",{bubbles:true,detail:{source:"dot"}}));
         touched(chip);
-        playSound("text");
+        playSound("playful");
       }
       return waitForTour(1350,generation);
     }
@@ -755,7 +769,7 @@ export default function PortfolioExperience({ soundOn, onToggleSound, playSound,
         ],{duration:760,delay:index*130,easing:"cubic-bezier(.16,.84,.24,1)"});
       });
       touched(chosen);
-      playSound("interaction");
+      playSound("playful");
       return waitForTour(1450,generation);
     }
 
@@ -781,7 +795,7 @@ export default function PortfolioExperience({ soundOn, onToggleSound, playSound,
         {transform:"translateY(-5px)"},
         {transform:"translateY(0)"},
       ],{duration:680,delay:190+index*115,easing:"cubic-bezier(.2,.8,.2,1)"}));
-      playSound("interaction");
+      playSound("playful");
       return waitForTour(1250,generation);
     }
 
@@ -823,8 +837,10 @@ export default function PortfolioExperience({ soundOn, onToggleSound, playSound,
         {transform:"rotate(13deg) scale(1.025)"},
         {transform:"rotate(0deg) scale(1)"},
       ],{duration:1280,easing:"cubic-bezier(.2,.8,.2,1)"});
-      playSound("land");
-      return waitForTour(1280,generation);
+      playSound("playful");
+      const landed=await waitForTour(1280,generation);
+      if(landed)playSound("land");
+      return landed;
     }
     return true;
   };
@@ -1178,7 +1194,7 @@ export default function PortfolioExperience({ soundOn, onToggleSound, playSound,
   const copyEmail=async()=>{if(!contactEmail)return;try{await navigator.clipboard.writeText(contactEmail);setEmailCopied(true);window.setTimeout(()=>setEmailCopied(false),1600);}catch{/* clipboard unavailable */}};
 
   return <main className="site-root">
-    <header className="topbar"><a className="wordmark" href="#top" aria-label="Areeb Khalid, home">areeb<span>✳</span></a><nav id="portfolio-navigation" className={menuOpen?"main-nav open":"main-nav"} aria-label="Main navigation"><a className={activeSection==="lab"?"current":""} href="#lab" onClick={()=>setMenuOpen(false)}>Work</a><a href="#capabilities" onClick={()=>setMenuOpen(false)}>What I build</a><a href="#about" onClick={()=>setMenuOpen(false)}>About</a><a href="#faq" onClick={()=>setMenuOpen(false)}>FAQ</a><a className="nav-contact" href="#contact" onClick={()=>setMenuOpen(false)}>Say hello <ArrowUpRight size={14}/></a></nav><div className="topbar-tools"><button className="sound-control" onClick={handleToggleSound} title={soundOn?"Turn sound off":"Turn sound on for Dot and the guide"} aria-pressed={soundOn}>{soundOn?<Volume2 size={13}/>:<VolumeX size={13}/>} SOUND: {soundOn?"ON":"OFF"}</button><button id="command-trigger" className="command-trigger" aria-label="Open quick navigation" onClick={()=>{const el=document.getElementById("command-overlay");el?.classList.toggle("show");}}><Command size={14}/><span>K</span></button><button className="mobile-menu" type="button" onClick={()=>setMenuOpen(v=>!v)} aria-label="Toggle navigation" aria-expanded={menuOpen} aria-controls="portfolio-navigation">{menuOpen?<X/>:<Menu/>}</button></div></header>
+    <header className="topbar"><a className="wordmark" href="#top" aria-label="Areeb Khalid, home">areeb<span>✳</span></a><nav id="portfolio-navigation" className={menuOpen?"main-nav open":"main-nav"} aria-label="Main navigation"><a className={activeSection==="lab"?"current":""} href="#lab" onClick={()=>setMenuOpen(false)}>Work</a><a href="#capabilities" onClick={()=>setMenuOpen(false)}>What I build</a><a href="#about" onClick={()=>setMenuOpen(false)}>About</a><a href="#faq" onClick={()=>setMenuOpen(false)}>FAQ</a><a className="nav-contact" href="#contact" onClick={()=>setMenuOpen(false)}>Say hello <ArrowUpRight size={14}/></a></nav><div className="topbar-tools"><button className="sound-control" onClick={handleToggleSound} title={soundOn?"Mute audio":"Unmute audio"} aria-label={soundOn?"Mute Dot audio":"Unmute Dot audio"} aria-pressed={soundOn}>{soundOn?<Volume2 size={13}/>:<VolumeX size={13}/>} SOUND: {soundOn?"ON":"OFF"}</button><button id="command-trigger" className="command-trigger" aria-label="Open quick navigation" onClick={()=>{const el=document.getElementById("command-overlay");el?.classList.toggle("show");}}><Command size={14}/><span>K</span></button><button className="mobile-menu" type="button" onClick={()=>setMenuOpen(v=>!v)} aria-label="Toggle navigation" aria-expanded={menuOpen} aria-controls="portfolio-navigation">{menuOpen?<X/>:<Menu/>}</button></div></header>
 
     <div className="command-overlay" id="command-overlay" onClick={e=>{if(e.target===e.currentTarget)e.currentTarget.classList.remove("show");}}><div className="command-box"><div className="command-box-head"><span><Command size={15}/> JUMP TO</span><button onClick={()=>document.getElementById("command-overlay")?.classList.remove("show")}><X size={15}/></button></div>{tourSteps.map((s,i)=><button key={s.id} onClick={()=>{scrollToId(s.id);document.getElementById("command-overlay")?.classList.remove("show");}}><span>0{i+1}</span>{s.title}<ArrowUpRight size={13}/></button>)}</div></div>
 
@@ -1235,7 +1251,7 @@ export default function PortfolioExperience({ soundOn, onToggleSound, playSound,
     <footer className="footer"><a href="#top" className="footer-mark">a<span>✳</span></a><span>BUILT WITH INTENT · © 2026 AREEB KHALID</span><a href="#top">BACK TO TOP ↑</a></footer>
 
     <DotPortal>
-      <div className={`edge-tools${showDotGuide ? "" : " is-entry"}`}><button onClick={()=>setShowGame(true)}><span>✳</span> PLAY A MOVE</button><button onClick={handleToggleSound}>{soundOn?<Volume2 size={12}/>:<VolumeX size={12}/>} SOUND: {soundOn?"ON":"OFF"}</button></div>
+      <div className={`edge-tools${showDotGuide ? "" : " is-entry"}`}><button onClick={()=>setShowGame(true)}><span>✳</span> PLAY A MOVE</button><button onClick={handleToggleSound} type="button" aria-label={soundOn?"Mute Dot audio":"Unmute Dot audio"} aria-pressed={soundOn} title={soundOn?"Mute audio":"Unmute audio"}>{soundOn?<Volume2 size={12}/>:<VolumeX size={12}/>} SOUND: {soundOn?"ON":"OFF"}</button></div>
       <DotGuide
         visible
         mode={showDotGuide ? dotMode : "entry"}
