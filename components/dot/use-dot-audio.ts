@@ -67,6 +67,7 @@ export function useDotAudio() {
   const ambientGainRef = useRef<GainNode | null>(null);
   const ambientTimerRef = useRef<number | null>(null);
   const ambientStartedRef = useRef(false);
+  const ambientUnlockHandlerRef = useRef<(() => void) | null>(null);
 
   const getContext = useCallback((): AudioContext | null => {
     if (typeof window === "undefined") return null;
@@ -140,56 +141,139 @@ export function useDotAudio() {
     if (context.state === "running") scheduleCue(context, cue);
   }, [getContext, scheduleCue]);
 
-  const stopAmbient = useCallback(() => {
-    if (ambientTimerRef.current !== null) { window.clearInterval(ambientTimerRef.current); ambientTimerRef.current = null; }
-    const source = ambientSourceRef.current; ambientSourceRef.current = null;
-    if (source) { try { source.stop(); } catch {} try { source.disconnect(); } catch {} }
-    const gain = ambientGainRef.current; ambientGainRef.current = null;
-    if (gain) { try { gain.disconnect(); } catch {} }
-    ambientStartedRef.current = false;
+  const clearAmbientUnlock = useCallback(() => {
+    const handler = ambientUnlockHandlerRef.current;
+    if (!handler || typeof window === "undefined") return;
+    window.removeEventListener("pointerdown", handler, true);
+    window.removeEventListener("touchstart", handler, true);
+    window.removeEventListener("keydown", handler, true);
+    ambientUnlockHandlerRef.current = null;
   }, []);
 
+  const stopAmbient = useCallback(() => {
+    clearAmbientUnlock();
+    if (ambientTimerRef.current !== null) {
+      window.clearInterval(ambientTimerRef.current);
+      ambientTimerRef.current = null;
+    }
+    const source = ambientSourceRef.current;
+    ambientSourceRef.current = null;
+    if (source) {
+      try { source.stop(); } catch {}
+      try { source.disconnect(); } catch {}
+    }
+    const gain = ambientGainRef.current;
+    ambientGainRef.current = null;
+    if (gain) {
+      try { gain.disconnect(); } catch {}
+    }
+    ambientStartedRef.current = false;
+  }, [clearAmbientUnlock]);
+
   const startAudio = useCallback(() => {
-    soundOnRef.current = true; setSoundOn(true);
-    const context = getContext(); if (!context) return;
+    soundOnRef.current = true;
+    setSoundOn(true);
+    const context = getContext();
+    if (!context) return;
+
     const startAmbient = () => {
       if (!soundOnRef.current || ambientStartedRef.current || context.state !== "running") return;
+
+      // One persistent low-level ambience bed plus occasional soft plucked notes.
+      // The master gain is deliberately audible at phone-speaker volume without
+      // competing with the portfolio copy or Dot's interaction cues.
       const master = context.createGain();
       master.gain.setValueAtTime(0.0001, context.currentTime);
-      master.gain.exponentialRampToValueAtTime(0.045, context.currentTime + 1.2);
+      master.gain.exponentialRampToValueAtTime(0.26, context.currentTime + 1.4);
       master.connect(context.destination);
+
       const buffer = context.createBuffer(1, Math.floor(context.sampleRate * 8), context.sampleRate);
-      const data = buffer.getChannelData(0); let seed = 918273;
-      for (let i=0;i<data.length;i+=1) {
-        seed=(seed*16807)%2147483647;
-        const noise=((seed/2147483647)*2-1)*0.018;
-        const t=i/context.sampleRate;
-        data[i]=noise+Math.sin(2*Math.PI*0.125*t)*0.004;
+      const data = buffer.getChannelData(0);
+      let seed = 918273;
+      for (let i = 0; i < data.length; i += 1) {
+        seed = (seed * 16807) % 2147483647;
+        const noise = ((seed / 2147483647) * 2 - 1) * 0.014;
+        const time = i / context.sampleRate;
+        const warmBed = Math.sin(2 * Math.PI * 0.125 * time) * 0.004
+          + Math.sin(2 * Math.PI * 130.81 * time) * 0.0022
+          + Math.sin(2 * Math.PI * 196 * time) * 0.0011;
+        data[i] = noise + warmBed;
       }
-      const source=context.createBufferSource(); source.buffer=buffer; source.loop=true;
-      const filter=context.createBiquadFilter(); filter.type="lowpass"; filter.frequency.setValueAtTime(1450,context.currentTime); filter.Q.setValueAtTime(0.18,context.currentTime);
-      source.connect(filter); filter.connect(master); source.start();
-      ambientSourceRef.current=source; ambientGainRef.current=master; ambientStartedRef.current=true;
-      let step=0;
-      const spark=()=>{
-        if(!soundOnRef.current||context.state!=="running") return;
-        const now=context.currentTime;
-        const frequencies=[392,523.25,659.25,493.88,587.33];
-        const osc=context.createOscillator(), env=context.createGain(), sf=context.createBiquadFilter();
-        const startAt=now+0.01, endAt=startAt+0.34;
-        osc.type="sine"; osc.frequency.setValueAtTime(frequencies[step%frequencies.length],startAt);
-        sf.type="lowpass"; sf.frequency.setValueAtTime(1800,startAt);
-        env.gain.setValueAtTime(0.0001,startAt);
-        env.gain.exponentialRampToValueAtTime(0.018,startAt+0.045);
-        env.gain.exponentialRampToValueAtTime(0.0001,endAt);
-        osc.connect(sf); sf.connect(env); env.connect(master);
-        osc.start(startAt); osc.stop(endAt+0.02); step+=1;
+
+      const source = context.createBufferSource();
+      source.buffer = buffer;
+      source.loop = true;
+      const filter = context.createBiquadFilter();
+      filter.type = "lowpass";
+      filter.frequency.setValueAtTime(1450, context.currentTime);
+      filter.Q.setValueAtTime(0.18, context.currentTime);
+      source.connect(filter);
+      filter.connect(master);
+      source.start();
+      ambientSourceRef.current = source;
+      ambientGainRef.current = master;
+      ambientStartedRef.current = true;
+
+      let step = 0;
+      const spark = () => {
+        if (!soundOnRef.current || context.state !== "running") return;
+        const now = context.currentTime;
+        const frequencies = [392, 523.25, 659.25, 493.88, 587.33, 440];
+        const oscillator = context.createOscillator();
+        const envelope = context.createGain();
+        const softFilter = context.createBiquadFilter();
+        const startAt = now + 0.01;
+        const endAt = startAt + 0.36;
+
+        oscillator.type = "sine";
+        oscillator.frequency.setValueAtTime(frequencies[step % frequencies.length], startAt);
+        softFilter.type = "lowpass";
+        softFilter.frequency.setValueAtTime(1800, startAt);
+        envelope.gain.setValueAtTime(0.0001, startAt);
+        envelope.gain.exponentialRampToValueAtTime(0.025, startAt + 0.05);
+        envelope.gain.exponentialRampToValueAtTime(0.0001, endAt);
+        oscillator.connect(softFilter);
+        softFilter.connect(envelope);
+        envelope.connect(master);
+        oscillator.start(startAt);
+        oscillator.stop(endAt + 0.02);
+        oscillator.onended = () => {
+          oscillator.disconnect();
+          softFilter.disconnect();
+          envelope.disconnect();
+        };
+        step += 1;
       };
-      spark(); ambientTimerRef.current=window.setInterval(spark,1850);
+
+      spark();
+      ambientTimerRef.current = window.setInterval(spark, 1850);
     };
-    if(context.state==="suspended") void context.resume().then(startAmbient).catch(()=>undefined);
-    else if(context.state==="running") startAmbient();
-  }, [getContext]);
+
+    const deferUntilNextGesture = () => {
+      if (ambientUnlockHandlerRef.current || !soundOnRef.current) return;
+      const onUnlock = () => {
+        clearAmbientUnlock();
+        if (!soundOnRef.current) return;
+        if (context.state === "suspended") {
+          void context.resume().then(startAmbient).catch(() => undefined);
+        } else {
+          startAmbient();
+        }
+      };
+      ambientUnlockHandlerRef.current = onUnlock;
+      window.addEventListener("pointerdown", onUnlock, { once: true, capture: true, passive: true });
+      window.addEventListener("touchstart", onUnlock, { once: true, capture: true, passive: true });
+      window.addEventListener("keydown", onUnlock, { once: true, capture: true });
+    };
+
+    if (context.state === "suspended") {
+      // The Enter/Skip tap normally unlocks this immediately. If a browser
+      // rejects it, wait for one later gesture rather than retrying on a loop.
+      void context.resume().then(startAmbient).catch(deferUntilNextGesture);
+    } else if (context.state === "running") {
+      startAmbient();
+    }
+  }, [clearAmbientUnlock, getContext]);
 
   const toggleSound = useCallback(() => {
     if (!soundOnRef.current) {
