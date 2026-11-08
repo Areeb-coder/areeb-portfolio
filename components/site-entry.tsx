@@ -91,7 +91,7 @@ export default function SiteEntry() {
       setIntroOutcome("completed");
       setShowIntro(false);
       setLeaving(false);
-      playSound("appear");
+      playSound("land");
     }, EXIT_DURATION_MS);
   }, [leaving, playSound, startAudio]);
 
