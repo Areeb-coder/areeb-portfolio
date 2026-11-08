@@ -1036,10 +1036,11 @@ export default function PortfolioExperience({ soundOn, onToggleSound, playSound,
   };
 
   useEffect(()=>{
-    if(!showDotGuide||autoTourStartedRef.current)return;
-    // Wait for the entry curtain to clear and the first portfolio frame to settle.
+    // Only Enter Portfolio enables the automatic exploration. Skip Intro leaves
+    // this false, so no delayed callback can start an old tour.
+    if(!showDotGuide||!autoTourEnabled||autoTourStartedRef.current)return;
     const timer=window.setTimeout(()=>{
-      if(autoTourStartedRef.current||tourActiveRef.current)return;
+      if(!autoTourEnabled||autoTourStartedRef.current||tourActiveRef.current)return;
       startTour();
     },1550);
     return ()=>window.clearTimeout(timer);
@@ -1175,9 +1176,8 @@ export default function PortfolioExperience({ soundOn, onToggleSound, playSound,
 
     <footer className="footer"><a href="#top" className="footer-mark">a<span>✳</span></a><span>BUILT WITH INTENT · © 2026 AREEB KHALID</span><a href="#top">BACK TO TOP ↑</a></footer>
 
-    <div className="edge-tools"><button onClick={()=>setShowGame(true)}><span>✳</span> PLAY A MOVE</button><button onClick={handleToggleSound}>{soundOn?<Volume2 size={12}/>:<VolumeX size={12}/>} SOUND: {soundOn?"ON":"OFF"}</button></div>
-
     <DotPortal>
+      <div className="edge-tools"><button onClick={()=>setShowGame(true)}><span>✳</span> PLAY A MOVE</button><button onClick={handleToggleSound}>{soundOn?<Volume2 size={12}/>:<VolumeX size={12}/>} SOUND: {soundOn?"ON":"OFF"}</button></div>
       <DotGuide
         visible
         mode={showDotGuide ? dotMode : "entry"}
