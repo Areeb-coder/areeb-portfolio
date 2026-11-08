@@ -102,6 +102,7 @@ export default function SiteEntry() {
       >
         <PortfolioExperience
           key={experienceVersion}
+          autoTourEnabled={introOutcome === "completed"}
           soundOn={soundOn}
           onToggleSound={toggleSound}
           playSound={playSound}
