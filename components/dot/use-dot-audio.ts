@@ -144,11 +144,29 @@ export function useDotAudio() {
     if (!context || !buffer || !gain || ambientSourceRef.current || !soundOnRef.current) return;
 
     try {
+      // Crossfade the last 180ms into the first 180ms in-place. The loop
+      // starts at the crossfade offset, avoiding a duplicate AudioBuffer copy
+      // (important on mobile) while keeping the wraparound sample-continuous.
+      const fadeFrames = Math.max(1, Math.floor(Math.min(0.18, buffer.duration / 4) * buffer.sampleRate));
+      for (let channelIndex = 0; channelIndex < buffer.numberOfChannels; channelIndex += 1) {
+        const channel = buffer.getChannelData(channelIndex);
+        const head = channel.slice(0, fadeFrames);
+        const tailStart = channel.length - fadeFrames;
+        for (let frame = 0; frame < fadeFrames; frame += 1) {
+          const amount = (frame + 1) / fadeFrames;
+          const fadeOut = Math.cos(amount * Math.PI * 0.5);
+          const fadeIn = Math.sin(amount * Math.PI * 0.5);
+          channel[tailStart + frame] = channel[tailStart + frame] * fadeOut + head[frame] * fadeIn;
+        }
+      }
+
       const source = context.createBufferSource();
       source.buffer = buffer;
       source.loop = true;
+      source.loopStart = fadeFrames / buffer.sampleRate;
+      source.loopEnd = buffer.duration;
       source.connect(gain);
-      source.start(0);
+      source.start(0, source.loopStart);
       ambientSourceRef.current = source;
       setGain(gain, AMBIENT_GAIN, 3);
     } catch {
