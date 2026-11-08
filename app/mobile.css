@@ -304,7 +304,7 @@
   .about-section { padding: 70px 0 76px; }
   .about-grid {
     display: grid; grid-template-columns: minmax(0, 1fr);
-    gap: 34px; width: 100%; max-width: 100%;
+    gap: 34px; width: calc(100% - (var(--mobile-gutter) * 2)); max-width: 100%; margin-inline: auto;
   }
   .about-left, .about-right { min-width: 0; }
   .about-left { min-height: 238px; }
@@ -324,7 +324,8 @@
 
   .faq-section .faq-layout {
     display: grid; grid-template-columns: minmax(0, 1fr); gap: 30px;
-    width: 100%; max-width: 100%; padding-top: 70px; padding-bottom: 76px;
+    width: calc(100% - (var(--mobile-gutter) * 2)); max-width: 100%; margin-inline: auto;
+    padding-top: 70px; padding-bottom: 76px;
   }
   .faq-heading, .faq-list { min-width: 0; max-width: 100%; }
   .faq-heading > p:not(.eyebrow) { max-width: 32rem; margin-top: 13px; font-size: 11px; line-height: 1.6; }
@@ -407,7 +408,7 @@
   }
   .dot-guide[data-mode="docked"] {
     right: max(12px, env(safe-area-inset-right)) !important;
-    bottom: max(12px, env(safe-area-inset-bottom)) !important;
+    bottom: calc(max(12px, env(safe-area-inset-bottom)) + var(--mobile-visual-viewport-gap, 0px)) !important;
     width: 74px !important; height: 74px !important;
   }
   .dot-guide-inner, .dot-guide-orb, .dot-guide .dot-mascot,
@@ -423,7 +424,7 @@
   }
   .dot-micro-popup p { font-size: 11px; line-height: 1.45; }
   .dot-tour-clock {
-    left: 50%; bottom: calc(82px + env(safe-area-inset-bottom));
+    left: 50%; bottom: calc(82px + env(safe-area-inset-bottom) + var(--mobile-visual-viewport-gap, 0px));
     min-width: 160px; min-height: 40px; gap: 8px; padding: 8px 11px;
     transform: translateX(-50%);
   }
@@ -432,7 +433,7 @@
   .dot-tour-clock time { font-size: 13px; }
   .dot-overview-prompt {
     left: 12px !important; right: 12px !important;
-    bottom: calc(82px + env(safe-area-inset-bottom)) !important;
+    bottom: calc(82px + env(safe-area-inset-bottom) + var(--mobile-visual-viewport-gap, 0px)) !important;
     width: auto !important; max-width: calc(100vw - 24px);
     align-items: flex-start; flex-direction: column; gap: 10px; padding: 12px;
   }
@@ -442,7 +443,7 @@
   .dot-overview-actions { display: flex; width: 100%; justify-content: flex-end; gap: 8px; }
   .dot-overview-actions button { min-width: 78px; min-height: 38px; }
   .dot-panel {
-    right: 12px !important; bottom: calc(82px + env(safe-area-inset-bottom)) !important;
+    right: 12px !important; bottom: calc(82px + env(safe-area-inset-bottom) + var(--mobile-visual-viewport-gap, 0px)) !important;
     width: min(360px, calc(100vw - 24px)) !important;
     max-height: calc(100dvh - 150px - env(safe-area-inset-top)) !important;
   }
@@ -455,14 +456,24 @@
     max-width: calc(100vw - 24px); padding: 10px 12px;
   }
   .edge-tools {
-    position: fixed; left: max(10px, env(safe-area-inset-left));
-    bottom: max(10px, env(safe-area-inset-bottom)); z-index: 2147483644;
-    display: flex; flex-wrap: nowrap; gap: 5px; max-width: calc(100vw - 104px);
+    position: fixed;
+    left: max(12px, env(safe-area-inset-left));
+    right: auto;
+    bottom: calc(max(12px, env(safe-area-inset-bottom)) + var(--mobile-visual-viewport-gap, 0px));
+    z-index: 2147483644;
+    display: flex;
+    flex-wrap: nowrap;
+    width: min(310px, calc(100vw - 112px - env(safe-area-inset-left)));
+    max-width: calc(100vw - 112px - env(safe-area-inset-left));
+    gap: 6px;
   }
   .edge-tools button {
-    min-height: 38px; padding: 7px 9px; gap: 6px;
+    min-height: 40px; padding: 7px 9px; gap: 6px;
     font-size: 6.5px; white-space: nowrap; touch-action: manipulation;
   }
+  .edge-tools button:first-child { flex: 1 1 auto; min-width: 0; }
+  .edge-tools button:last-child { flex: 0 0 112px; min-width: 112px; justify-content: center; }
+  .edge-tools.is-entry { display: none !important; }
   .edge-tools button svg { width: 12px; height: 12px; }
   .command-overlay { align-items: flex-start; padding: calc(76px + env(safe-area-inset-top)) 12px 20px; }
   .command-box { width: 100%; max-height: calc(100dvh - 96px); overflow-y: auto; }
