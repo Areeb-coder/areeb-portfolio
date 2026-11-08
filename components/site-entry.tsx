@@ -14,7 +14,7 @@ export default function SiteEntry() {
   const [leaving, setLeaving] = useState(false);
   const [experienceVersion, setExperienceVersion] = useState(0);
   const [introOutcome, setIntroOutcome] = useState<"active" | "completed" | "skipped">("active");
-  const { soundOn, toggleSound, playSound } = useDotAudio();
+  const { soundOn, toggleSound, playSound, startAudio } = useDotAudio();
   const exitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrollFrameRef = useRef<number | null>(null);
 
@@ -68,16 +68,18 @@ export default function SiteEntry() {
     if (exitTimerRef.current) clearTimeout(exitTimerRef.current);
     exitTimerRef.current = null;
     window.scrollTo({ left: 0, top: 0, behavior: "instant" });
+    startAudio();
     // Skipping is a separate state transition: reveal the portfolio immediately
     // but explicitly keep Dot's automatic exploration disabled.
     setIntroOutcome("skipped");
     setLeaving(false);
     setShowIntro(false);
-  }, [leaving]);
+  }, [leaving, startAudio]);
 
   const enterPortfolio = useCallback(() => {
     if (leaving) return;
     window.scrollTo({ left: 0, top: 0, behavior: "instant" });
+    startAudio();
     playSound("transition");
     setLeaving(true);
     // Dot travels with the entry curtain. The body-portal character takes over
@@ -91,7 +93,7 @@ export default function SiteEntry() {
       setLeaving(false);
       playSound("appear");
     }, EXIT_DURATION_MS);
-  }, [leaving, playSound]);
+  }, [leaving, playSound, startAudio]);
 
   return (
     <>
@@ -111,7 +113,7 @@ export default function SiteEntry() {
         />
       </div>
       {showIntro && (
-        <DriverSelection onEnter={enterPortfolio} onSkip={skipIntro} leaving={leaving} soundOn={soundOn} onToggleSound={toggleSound} />
+        <DriverSelection onEnter={enterPortfolio} onSkip={skipIntro} leaving={leaving} />
       )}
     </>
   );
